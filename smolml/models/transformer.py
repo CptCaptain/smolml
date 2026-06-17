@@ -13,8 +13,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from smolml.data.corpus import VOCAB_SIZE
-from smolml.flops import FlopBreakdown, causal_attention_flops, linear_flops
-from smolml.models.registry import LanguageModel, register_model
+from smolml.flops import MAC_FLOPS, FlopBreakdown, causal_attention_flops, linear_flops
+from smolml.models.registry import DecodeState, LanguageModel, register_model
 
 
 @dataclass
@@ -103,6 +103,36 @@ class CausalSelfAttention(nn.Module):
         out = out.transpose(1, 2).reshape(b, t, c)
         return self.proj(out)
 
+    def decode_step(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        kv: tuple[torch.Tensor, torch.Tensor] | None,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        """Single-token incremental step with a KV cache.
+
+        ``x`` is ``(B, 1, C)`` (the one new token); ``cos``/``sin`` are the rotary
+        factors at its absolute position; ``kv`` is the cached (keys, values) from
+        earlier positions, or ``None``. The new query attends to all cached keys
+        plus itself (no mask needed — every cached key is in the past), exactly
+        reproducing the last row of the full causal attention. Returns the
+        projected output and the grown cache.
+        """
+        b, _, c = x.shape
+        q, k, v = self.qkv(x).split(c, dim=2)
+        q = q.view(b, 1, self.n_heads, self.head_dim).transpose(1, 2)
+        k = k.view(b, 1, self.n_heads, self.head_dim).transpose(1, 2)
+        v = v.view(b, 1, self.n_heads, self.head_dim).transpose(1, 2)
+        q = apply_rope(q, cos, sin)
+        k = apply_rope(k, cos, sin)
+        if kv is not None:
+            k = torch.cat([kv[0], k], dim=2)
+            v = torch.cat([kv[1], v], dim=2)
+        out = F.scaled_dot_product_attention(q, k, v, is_causal=False)
+        out = out.transpose(1, 2).reshape(b, 1, c)
+        return self.proj(out), (k, v)
+
 
 class MLP(nn.Module):
     """Position-wise feed-forward: Linear -> GELU -> Linear."""
@@ -131,6 +161,18 @@ class Block(nn.Module):
         x = x + self.attn(self.norm1(x), cos, sin)
         x = x + self.mlp(self.norm2(x))
         return x
+
+    def decode_step(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        kv: tuple[torch.Tensor, torch.Tensor] | None,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+        a, new_kv = self.attn.decode_step(self.norm1(x), cos, sin, kv)
+        x = x + a
+        x = x + self.mlp(self.norm2(x))
+        return x, new_kv
 
 
 @register_model("transformer")
@@ -184,6 +226,52 @@ class Transformer(LanguageModel):
         )
         forward = cfg.n_layers * per_layer + linear_flops(t, d, cfg.vocab_size)
         return FlopBreakdown.from_forward(forward)
+
+    # --- Prequential decode (KV-cache override; O(context_len) per byte) -------
+
+    def init_prequential_state(self) -> DecodeState:
+        # First byte predicted from a uniform prior; one empty KV slot per layer.
+        return DecodeState(
+            next_logits=torch.zeros(self.config.vocab_size),
+            cache=[None] * self.config.n_layers,
+        )
+
+    def observe(
+        self, state: DecodeState, token: int, pos: int
+    ) -> tuple[DecodeState, FlopBreakdown]:
+        cfg = self.config
+        if pos >= cfg.max_seq_len:
+            raise ValueError(
+                f"prequential position {pos} reaches max_seq_len {cfg.max_seq_len}; "
+                "size max_seq_len >= eval-stream length (sliding-window decode is future work)"
+            )
+        device = self.rope_cos.device
+        x = self.tok_emb(torch.tensor([[token]], dtype=torch.long, device=device))
+        cos, sin = self.rope_cos[pos : pos + 1], self.rope_sin[pos : pos + 1]
+        new_cache: list[tuple[torch.Tensor, torch.Tensor]] = []
+        with torch.no_grad():
+            for block, kv in zip(self.blocks, state.cache, strict=True):
+                x, nkv = block.decode_step(x, cos, sin, kv)
+                new_cache.append(nkv)
+            logits = self.head(self.norm_f(x))[0, -1].detach()
+        # This step attended pos+1 keys (the cache of pos plus the new token).
+        return DecodeState(next_logits=logits, cache=new_cache), self.decode_step_flops(pos + 1)
+
+    def decode_step_flops(self, context_len: int) -> FlopBreakdown:
+        """Incremental per-byte prediction cost with a KV cache: O(d^2) projections
+        for the one new token + O(context_len * d) attention (1 query vs
+        ``context_len`` cached keys). Forward-only (inference)."""
+        cfg = self.config
+        d = cfg.d_model
+        per_layer = (
+            linear_flops(1, d, 3 * d)  # qkv for the single new token
+            + linear_flops(1, d, d)  # output projection
+            + linear_flops(1, d, cfg.d_ff)  # ffn up
+            + linear_flops(1, cfg.d_ff, d)  # ffn down
+            + 2 * MAC_FLOPS * d * context_len  # Q·Kᵀ + softmax·V: 1 query × context_len keys
+        )
+        forward = cfg.n_layers * per_layer + linear_flops(1, d, cfg.vocab_size)
+        return FlopBreakdown(forward=forward, backward=0)
 
     @classmethod
     def from_config(cls, config: dict[str, object]) -> "Transformer":

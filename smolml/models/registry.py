@@ -18,12 +18,29 @@ interface, so it never needs to know the mechanism behind the name.
 """
 
 import abc
+from dataclasses import dataclass, field
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from smolml.data.corpus import VOCAB_SIZE
 from smolml.flops import FlopBreakdown
+
+
+@dataclass
+class DecodeState:
+    """Per-stream prequential decode state.
+
+    ``next_logits`` is the model's distribution for the **upcoming** byte, derived
+    only from bytes already observed — the predict-before-reveal guarantee lives
+    here. ``cache`` is model-specific (e.g. a transformer KV cache); ``tokens`` is
+    the revealed-byte history the generic recompute fallback replays.
+    """
+
+    next_logits: torch.Tensor
+    tokens: list[int] = field(default_factory=list)
+    cache: object = None
 
 
 class LanguageModel(nn.Module, abc.ABC):
@@ -101,6 +118,54 @@ class LanguageModel(nn.Module, abc.ABC):
             torch.nn.utils.clip_grad_norm_(self.parameters(), grad_clip)
         optimizer.step()
         return loss, self.flops(t).scale(b)
+
+    # --- Prequential / online decode seam (Task 0.2) ---------------------------
+    # Predict the next byte BEFORE it is revealed, then optionally adapt on it.
+    # Defaults give every model a correct (if O(context^2)) recompute path; a
+    # model overrides them for efficiency or to add real online adaptation.
+
+    def init_prequential_state(self) -> DecodeState:
+        """Fresh per-stream state. The first byte is predicted from a uniform
+        prior (zero logits) since there is no context yet."""
+        return DecodeState(next_logits=torch.zeros(VOCAB_SIZE))
+
+    def predict_logits(self, state: DecodeState) -> torch.Tensor:
+        """Logits ``(vocab,)`` for the upcoming byte — past observations only."""
+        return state.next_logits
+
+    def observe(
+        self, state: DecodeState, token: int, pos: int
+    ) -> tuple[DecodeState, FlopBreakdown]:
+        """Incorporate revealed ``token`` at ``pos``; return (new_state, decode_flops).
+
+        Generic fallback: replay the (context-capped) revealed history through
+        ``forward`` and read the last position's logits. Charges
+        ``decode_step_flops(window_len)`` — the cost it actually computed.
+        """
+        tokens = [*state.tokens, token]
+        cap = getattr(self.config, "max_seq_len", None)
+        window = tokens[-cap:] if cap else tokens
+        device = next(self.parameters()).device
+        x = torch.tensor([window], dtype=torch.long, device=device)
+        with torch.no_grad():
+            logits = self(x)[0, -1].detach()
+        return DecodeState(next_logits=logits, tokens=tokens), self.decode_step_flops(len(window))
+
+    def decode_step_flops(self, context_len: int) -> FlopBreakdown:
+        """Forward-only FLOPs to predict one byte given ``context_len`` of context.
+        Default = the generic recompute cost (a full forward over the window)."""
+        return FlopBreakdown(forward=self.flops(context_len).forward, backward=0)
+
+    def adapt(
+        self, state: DecodeState, optimizer: torch.optim.Optimizer | None, *, grad_clip: float = 1.0
+    ) -> tuple[DecodeState, FlopBreakdown]:
+        """Optional online update from the revealed history; return
+        (new_state, adapt_flops). Default = frozen (no update, zero FLOPs)."""
+        return state, FlopBreakdown()
+
+    def adapt_step_flops(self, context_len: int) -> FlopBreakdown:
+        """FLOPs of one online-adaptation step. Default = 0 (frozen model)."""
+        return FlopBreakdown()
 
 
 _REGISTRY: dict[str, type[LanguageModel]] = {}
