@@ -26,20 +26,29 @@ training a giant model. Background and the math are in `README.md`.
 - Shared language lives in `CONTEXT.md` (glossary — keep it implementation-free). The candidate
   pipeline and statuses live in `docs/candidates.md`. The roadmap is `docs/plan.md`.
 
-## STANDING DIRECTIVE — grow the learning compendium
+## STANDING DIRECTIVE — grow the learning compendium (via the docs-builder)
 
-This project is also a **learning experience**. `docs/learning/` is an ever-growing hypertext
-document and is a **first-class deliverable, not optional**.
+This project is a **learning experience**. `docs/learning/` is an ever-growing **interactive MDX
+site (Astro)** — the canonical learning compendium and a first-class deliverable. Format rationale
+is ADR 0005; the role split is ADR 0006; the docs-builder's operating manual is
+`docs/learning/CONTRIBUTING.md`.
 
-Whenever you encounter, introduce, or rely on a non-trivial concept (a metric, an algorithm, a
-piece of theory, a trick), you MUST:
-1. Add or update a concept page under `docs/learning/concepts/<concept>.md` with: a plain
-   explanation, at least one **visualization** (a Mermaid diagram inline, and/or a link to a
-   generated plot the harness wrote), and a concrete **worked example**.
-2. **Cross-link** it: link to/from related concept pages and from `docs/learning/index.md` so
-   the web stays connected (this is hypertext — no orphan pages).
-3. When you run an experiment, log it in `docs/learning/experiments/` (hypothesis, setup, the
-   bpb-vs-FLOP result + plot, and what we learned — including failures, which are the point).
+**Division of labor (ADR 0006) — read this before touching docs:**
+
+- **Researchers** = implementers, the orchestrator, and the human. They generate concepts and run
+  experiments. They **do NOT hand-write** anything under `docs/learning/`. When a researcher
+  introduces a concept or finishes an experiment, they produce a clear **written explanation**
+  (intuition, the math, a worked example, and what is worth visualizing) and hand it to the
+  docs-builder via the orchestrator — then **confirm** the resulting page is accurate and helpful
+  (a short back-and-forth).
+- **The docs-builder** = a dedicated, persistent sub-agent (`claude_code`, title `docs-builder`)
+  that does nothing but build and grow the site. It owns `docs/learning/`, maintains a reusable
+  **component library**, keeps a **process log** (`docs/learning/PROCESS.md`) so output stays
+  consistent across sessions, and **self-adapts** (factors out a shared component whenever a viz
+  pattern recurs). It does not touch harness/research code.
+
+PR gates for any docs change: the docs site **build stays green**, content is **confirmed by a
+researcher/human**, and the code is **cross-reviewed by a different vendor** (it is frontend code).
 
 If a PR introduces a concept or an experiment without updating `docs/learning/`, it is
 incomplete. Keep entries lightweight but real; favor intuition + a picture + an example over
