@@ -27,7 +27,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 
 from smolml.data.corpus import ByteCorpus, get_batch
 from smolml.device import get_device
@@ -88,14 +87,7 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
     train_data, val_data = corpus.split(cfg.val_fraction)
     model = build_model(cfg.model, cfg.model_config).to(device)
     model.train()
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg.lr, betas=cfg.betas, weight_decay=cfg.weight_decay
-    )
-
-    # Training FLOPs per optimizer step: one (forward + backward) per sequence,
-    # times the batch size. Constant across steps for a fixed shape.
-    step_flops = model.flops(cfg.seq_len).total * cfg.batch_size
-
+    optimizer = model.configure_optimizer(lr=cfg.lr, weight_decay=cfg.weight_decay, betas=cfg.betas)
     run_name = cfg.run_name or f"{cfg.model}-{int(time.time())}"
     runs_path = Path(runs_dir)
     runs_path.mkdir(parents=True, exist_ok=True)
@@ -152,15 +144,8 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
 
         while step == 0 or cumulative_flops < cfg.flop_budget:
             x, y = get_batch(train_data, cfg.batch_size, cfg.seq_len, device, batch_gen)
-            optimizer.zero_grad(set_to_none=True)
-            logits = model(x)
-            loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
-            loss.backward()
-            if cfg.grad_clip > 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-            optimizer.step()
-
-            cumulative_flops += step_flops
+            loss, spent = model.train_step((x, y), optimizer, grad_clip=cfg.grad_clip)
+            cumulative_flops += spent.total
             step += 1
             if step % cfg.eval_interval == 0:
                 final_bpb = evaluate()

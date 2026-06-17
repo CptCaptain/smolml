@@ -9,13 +9,18 @@ changes** by doing three things:
    referee is identical for every entrant);
 3. decorate the class with ``@register_model("name")``.
 
-The harness only ever speaks to a model through this interface, so it never needs
-to know what mechanism sits behind the name.
+A backprop model implements only those three. A **non-backprop** candidate (the
+point of the project — ADR 0003) additionally overrides :meth:`LanguageModel.train_step`
+(and optionally :meth:`LanguageModel.configure_optimizer`) to express its own
+learning rule and its own honest FLOP cost, instead of being charged the default
+2x backprop tax. Either way the harness only speaks to a model through this
+interface, so it never needs to know the mechanism behind the name.
 """
 
 import abc
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from smolml.flops import FlopBreakdown
@@ -36,21 +41,66 @@ class LanguageModel(nn.Module, abc.ABC):
 
     @abc.abstractmethod
     def flops(self, seq_len: int) -> FlopBreakdown:
-        """Analytic matmul FLOPs to process **one** sequence of ``seq_len`` tokens.
+        """Analytic FLOPs to process **one** sequence of ``seq_len`` tokens.
 
-        Returns a :class:`~smolml.flops.FlopBreakdown` (forward + backward). The
-        harness multiplies by batch size and accumulates. Forward-only callers
-        (inference, the future prequential mode) read ``.forward``.
+        Returns a :class:`~smolml.flops.FlopBreakdown`: ``forward`` is the
+        forward-pass cost; ``backward`` is *this model's* own learning/update
+        cost per sequence (for backprop models, 2x forward). The default
+        :meth:`train_step` charges ``flops(seq_len).scale(batch)``; the harness
+        accumulates the value :meth:`train_step` returns, so accounting follows
+        the real mechanism rather than any hardcoded multiplier. Forward-only
+        callers read ``.forward``.
         """
 
     @classmethod
     @abc.abstractmethod
-    def from_config(cls, config: dict) -> "LanguageModel":
+    def from_config(cls, config: dict[str, object]) -> "LanguageModel":
         """Build the model from a plain config dict (as stored in run logs)."""
 
     def num_params(self) -> int:
         """Total trainable parameters (shared/tied tensors counted once)."""
         return sum(p.numel() for p in self.parameters())
+
+    def configure_optimizer(
+        self, *, lr: float, weight_decay: float, betas: tuple[float, float]
+    ) -> torch.optim.Optimizer:
+        """Build the optimizer for this model. Default: AdamW over all params.
+
+        Override for a mechanism that updates differently (a non-backprop
+        candidate may return a trivial optimizer it does not use).
+        """
+        return torch.optim.AdamW(self.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
+
+    def train_step(
+        self,
+        batch: tuple[torch.Tensor, torch.Tensor],
+        optimizer: torch.optim.Optimizer,
+        *,
+        grad_clip: float = 1.0,
+    ) -> tuple[torch.Tensor, FlopBreakdown]:
+        """Run ONE learning step on ``batch`` and report the FLOPs it spent.
+
+        ``batch`` is ``(x, y)`` of shape ``(B, T)``. Returns ``(loss, flops)``:
+        ``loss`` is the mini-batch cross-entropy in **nats** (the harness converts
+        to bits/byte for logging) and ``flops`` is the compute actually spent. The
+        harness accumulates ``flops`` against the budget, so a candidate's
+        accounting follows its real learning rule.
+
+        Default = standard backprop: forward, cross-entropy, backward, grad-clip,
+        optimizer step, charging ``flops(T).scale(B)``. This is the seam a
+        non-backprop candidate (ADR 0003) overrides to express its own learning
+        and its own honest cost instead of being charged the 2x backprop tax.
+        """
+        x, y = batch
+        b, t = x.shape
+        optimizer.zero_grad(set_to_none=True)
+        logits = self(x)
+        loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
+        loss.backward()
+        if grad_clip > 0:
+            torch.nn.utils.clip_grad_norm_(self.parameters(), grad_clip)
+        optimizer.step()
+        return loss, self.flops(t).scale(b)
 
 
 _REGISTRY: dict[str, type[LanguageModel]] = {}
@@ -82,6 +132,6 @@ def list_models() -> list[str]:
     return sorted(_REGISTRY)
 
 
-def build_model(name: str, config: dict) -> LanguageModel:
+def build_model(name: str, config: dict[str, object]) -> LanguageModel:
     """Construct a registered model from its name and config dict."""
     return get_model(name).from_config(config)

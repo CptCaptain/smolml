@@ -186,5 +186,5 @@ class Transformer(LanguageModel):
         return FlopBreakdown.from_forward(forward)
 
     @classmethod
-    def from_config(cls, config: dict) -> "Transformer":
+    def from_config(cls, config: dict[str, object]) -> "Transformer":
         return cls(TransformerConfig(**config))
