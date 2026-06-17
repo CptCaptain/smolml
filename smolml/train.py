@@ -42,7 +42,7 @@ class TrainConfig:
     """Everything needed to reproduce a run (fixed seed makes it deterministic)."""
 
     model: str = "transformer"
-    model_config: dict = field(default_factory=dict)
+    model_config: dict[str, object] = field(default_factory=dict)
     flop_budget: float = 1e12
     batch_size: int = 16
     seq_len: int = 128
@@ -53,6 +53,10 @@ class TrainConfig:
     seed: int = 0
     eval_interval: int = 50
     eval_batches: int = 8
+    # Validation uses a FIXED context length and window count for EVERY run,
+    # independent of training seq_len, so bpb (which depends on conditioning
+    # length) is comparable across runs. Must be <= the model's max context.
+    eval_seq_len: int = 128
     val_fraction: float = 0.1
     device: str | None = None
     run_name: str | None = None
@@ -93,6 +97,9 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
     train_data, val_data = corpus.split(cfg.val_fraction)
     model = build_model(cfg.model, cfg.model_config).to(device)
     model.train()
+    max_ctx = getattr(model.config, "max_seq_len", None)
+    if max_ctx is not None and cfg.eval_seq_len > max_ctx:
+        raise ValueError(f"eval_seq_len {cfg.eval_seq_len} exceeds model max context {max_ctx}")
     optimizer = model.configure_optimizer(lr=cfg.lr, weight_decay=cfg.weight_decay, betas=cfg.betas)
 
     # Look-ahead estimate of one step's cost, used as the budget *ceiling* gate.
@@ -114,7 +121,7 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
             model,
             val_data,
             batch_size=cfg.batch_size,
-            seq_len=cfg.seq_len,
+            seq_len=cfg.eval_seq_len,
             device=device,
             n_batches=cfg.eval_batches,
         )
@@ -126,7 +133,7 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
             model,
             train_data,
             batch_size=cfg.batch_size,
-            seq_len=cfg.seq_len,
+            seq_len=cfg.eval_seq_len,
             device=device,
             n_batches=cfg.eval_batches,
         )
@@ -143,6 +150,8 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
             "flop_budget": cfg.flop_budget,
             "batch_size": cfg.batch_size,
             "seq_len": cfg.seq_len,
+            "eval_seq_len": cfg.eval_seq_len,
+            "val_fraction": cfg.val_fraction,
             "lr": cfg.lr,
             "started_at": started_at,
         }

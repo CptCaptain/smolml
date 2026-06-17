@@ -28,6 +28,8 @@ class RunRecord:
     device: str
     seed: int
     flop_budget: float
+    eval_seq_len: int
+    val_fraction: float
     flops: list[int] = field(default_factory=list)
     val_bpb: list[float] = field(default_factory=list)
     opt_steps: list[int] = field(default_factory=list)
@@ -53,7 +55,7 @@ class RunRecord:
 
 def load_run(path: str | Path) -> RunRecord:
     """Parse a single run log into a :class:`RunRecord`."""
-    meta: dict = {}
+    meta: dict[str, object] = {}
     flops: list[int] = []
     bpb: list[float] = []
     opt_steps: list[int] = []
@@ -78,6 +80,8 @@ def load_run(path: str | Path) -> RunRecord:
         device=meta["device"],
         seed=int(meta["seed"]),
         flop_budget=float(meta["flop_budget"]),
+        eval_seq_len=int(meta["eval_seq_len"]),
+        val_fraction=float(meta["val_fraction"]),
         flops=flops,
         val_bpb=bpb,
         opt_steps=opt_steps,
@@ -91,17 +95,45 @@ def collect_runs(runs_dir: str | Path) -> list[RunRecord]:
     return records
 
 
+def protocol_warnings(records: list[RunRecord]) -> list[str]:
+    """Comparability warnings: ranking by final bpb is only fair within a single
+    eval protocol AND a single FLOP budget. The bpb-vs-FLOP *plot* spans budgets
+    on purpose; the *table* ranking does not."""
+    out: list[str] = []
+    protocols = {(r.eval_seq_len, r.val_fraction) for r in records}
+    if len(protocols) > 1:
+        out.append(
+            "runs span multiple eval protocols (eval_seq_len, val_fraction): "
+            f"{sorted(protocols)} -- final-bpb ranking across them is NOT comparable."
+        )
+    budgets = {r.flop_budget for r in records}
+    if len(budgets) > 1:
+        out.append(
+            f"runs span multiple FLOP budgets: {sorted(budgets)} -- rank by final "
+            "bpb only within an equal budget; the plot shows the curves across budgets."
+        )
+    return out
+
+
 def build_table(records: list[RunRecord]) -> str:
-    """Render the leaderboard as a markdown table (best run first)."""
-    header = (
-        "| rank | run | model | params | train FLOPs | steps | final val bpb |\n"
-        "| ---: | --- | --- | ---: | ---: | ---: | ---: |"
+    """Render the leaderboard as a markdown table (best run first).
+
+    Surfaces the eval-protocol columns (eval ctx, val%, budget) and prepends
+    comparability warnings when runs differ on them.
+    """
+    rows: list[str] = [f"> WARNING: {w}" for w in protocol_warnings(records)]
+    if rows:
+        rows.append("")
+    rows.append(
+        "| rank | run | model | params | eval ctx | val% | budget | "
+        "train FLOPs | steps | final val bpb |\n"
+        "| ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
     )
-    rows = [header]
     for rank, r in enumerate(records, start=1):
         rows.append(
-            f"| {rank} | {r.run} | {r.model} | {r.params:,} | "
-            f"{r.final_flops:.3e} | {r.steps} | {r.final_val_bpb:.4f} |"
+            f"| {rank} | {r.run} | {r.model} | {r.params:,} | {r.eval_seq_len} | "
+            f"{r.val_fraction:.2f} | {r.flop_budget:.2e} | {r.final_flops:.3e} | "
+            f"{r.steps} | {r.final_val_bpb:.4f} |"
         )
     return "\n".join(rows)
 

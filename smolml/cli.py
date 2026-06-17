@@ -30,7 +30,8 @@ def _cmd_train(args: argparse.Namespace) -> None:
         "d_model": args.d_model,
         "n_layers": args.layers,
         "n_heads": args.heads,
-        "max_seq_len": args.seq_len,
+        # context must hold both training and (fixed) eval windows
+        "max_seq_len": max(args.seq_len, args.eval_seq_len),
     }
     cfg = TrainConfig(
         model=args.model,
@@ -38,6 +39,7 @@ def _cmd_train(args: argparse.Namespace) -> None:
         flop_budget=args.budget,
         batch_size=args.batch_size,
         seq_len=args.seq_len,
+        eval_seq_len=args.eval_seq_len,
         lr=args.lr,
         seed=args.seed,
         eval_interval=args.eval_interval,
@@ -74,6 +76,9 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--layers", type=int, default=4)
     t.add_argument("--heads", type=int, default=4)
     t.add_argument("--seq-len", type=int, default=128)
+    t.add_argument(
+        "--eval-seq-len", type=int, default=128, help="fixed eval context (identical per run)"
+    )
     t.add_argument("--batch-size", type=int, default=16)
     t.add_argument("--lr", type=float, default=3e-3)
     t.add_argument("--eval-interval", type=int, default=50)

@@ -26,6 +26,7 @@ def _tiny_config(budget: float, run_name: str) -> TrainConfig:
         seed=0,
         eval_interval=4,
         eval_batches=4,
+        eval_seq_len=32,
         val_fraction=0.1,
         device="cpu",
         run_name=run_name,
