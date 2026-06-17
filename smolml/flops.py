@@ -11,13 +11,19 @@ Conventions (assumptions made explicit)
 - **MAC = 2 FLOPs.** A multiply-accumulate is 1 multiply + 1 add. We count both.
 - **Matmul (m,k)·(k,n) -> (m,n) costs ``2*m*n*k`` FLOPs.** Each of the ``m*n``
   outputs is a length-``k`` dot product = ``k`` MACs = ``2*k`` FLOPs.
-- **What we count:** the matmuls that dominate compute — linear/projection layers
-  (``O(tokens * d^2)``) and the attention score/value matmuls (``O(tokens^2 * d)``).
-- **What we ignore, and why:** elementwise ops (activations, RMSNorm, residual
-  adds, softmax normalization, RoPE rotations, dropout). These are ``O(tokens*d)``
-  vs. ``O(tokens*d^2)`` for the matmuls — asymptotically negligible, and counting
-  them precisely is framework-dependent without moving the metric. Embedding
-  lookups are gathers (no multiply-add) and cost 0.
+- **What we count:** the compute that *dominates* a mechanism. For the transformer
+  (and Phase-A fast-weight memory, whose reads/writes are outer-products/matvecs =
+  matmuls) that is the matmuls — linear/projection layers (``O(tokens * d^2)``) and
+  the attention score/value matmuls (``O(tokens^2 * d)``).
+- **What we omit, and the condition for omitting it:** elementwise ops
+  (activations, RMSNorm, residual adds, softmax normalization, RoPE rotations,
+  dropout) and embedding gathers — omitted **only because they are dominated by
+  the matmuls** here (``O(tokens*d)`` vs. ``O(tokens*d^2)``), and counting them
+  exactly is framework-dependent without moving the metric. This omission is
+  **conditional, not universal**: a mechanism whose dominant compute is *not*
+  matmuls (e.g. the Task 0.3 online context-mixer — table lookups + logistic
+  mixing) MUST charge that work via ``pointwise_flops``/``gather_flops`` below,
+  or the instrument would silently score it as nearly free.
 - **Backward = 2x forward (matmul FLOPs).** For ``Y = A·B`` where both operands
   feed gradients, backprop computes ``dA = dY·Bᵀ`` and ``dB = Aᵀ·dY`` — two
   matmuls of the same FLOP magnitude as the forward one. So a training step costs
@@ -80,6 +86,29 @@ def causal_attention_flops(seq_len: int, d_model: int) -> int:
     """
     pairs = seq_len * (seq_len + 1) // 2
     return 2 * MAC_FLOPS * d_model * pairs
+
+
+def pointwise_flops(n_elems: int, per_elem: int = 1) -> int:
+    """FLOPs for an elementwise op over ``n_elems`` elements.
+
+    ``per_elem`` is the arithmetic ops charged per element (e.g. 1 for an add or
+    multiply; more for a fused expression). For matmul-dominated models this work
+    is omitted as negligible; mechanisms whose dominant compute is elementwise
+    (e.g. logistic mixing in a context-mixer) MUST charge it here.
+    """
+    return n_elems * per_elem
+
+
+def gather_flops(n: int, cost_per_lookup: int = 1) -> int:
+    """Nominal cost of ``n`` table lookups / gathers.
+
+    A gather is a memory op with no multiply-add, so matmul-dominated models
+    charge 0 for embedding lookups. But a lookup-*dominated* mechanism (e.g. the
+    Task 0.3 context-mixer's order-k byte tables) would otherwise be scored free;
+    this primitive charges a documented nominal ``cost_per_lookup`` (default 1) so
+    such mechanisms pay an honest, non-zero price for their dominant work.
+    """
+    return n * cost_per_lookup
 
 
 @dataclass(frozen=True)

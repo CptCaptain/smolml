@@ -9,8 +9,10 @@ from smolml.flops import (
     MAC_FLOPS,
     FlopBreakdown,
     causal_attention_flops,
+    gather_flops,
     linear_flops,
     matmul_flops,
+    pointwise_flops,
 )
 
 
@@ -33,6 +35,14 @@ def test_causal_attention_pairs_and_head_independence():
     assert causal_attention_flops(4, 8) == 320
     # Independent of head count: only d_model enters the formula.
     assert causal_attention_flops(16, 64) == 2 * 2 * 64 * (16 * 17 // 2)
+
+
+def test_pointwise_and_gather_primitives():
+    # Non-matmul primitives for lookup/mixing-dominated mechanisms (Task 0.3).
+    assert pointwise_flops(10) == 10  # default 1 op/element
+    assert pointwise_flops(10, per_elem=3) == 30
+    assert gather_flops(7) == 7  # nominal 1 op/lookup
+    assert gather_flops(7, cost_per_lookup=0) == 0
 
 
 def test_breakdown_total_and_backward_multiplier():
