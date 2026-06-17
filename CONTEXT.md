@@ -34,3 +34,15 @@ learning rule, a conditional-compute scheme, …). Tracked in `docs/candidates.m
 ### Capability claims
 Statements like "it answers questions." Explicitly *out of scope* until a candidate has
 already won on loss-per-FLOP. Treated as marketing, not evidence, until then.
+
+### Source (iv) — the only qualifying advantage
+The single admissible reason a Space-B (non-backprop) candidate is worth scouting: its
+learning *dynamics* extract **more loss-reduction per FLOP**. Distinguished from (i) cheaper
+credit assignment (~3× ceiling), (ii) locality/parallelism (wall-clock only — out of scope),
+and (iii) no activation storage (memory only). See ADR 0003.
+
+### Amortized vs. transductive
+*Amortized* learning trains a reusable model once, then answers many queries (transformers).
+*Transductive* learning re-learns per input stream (classic online context-mixing
+compressors). Which of these counts as a valid candidate is a project boundary still under
+discussion.
