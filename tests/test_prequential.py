@@ -54,29 +54,53 @@ class _ConstantModel(LanguageModel):
     def from_config(cls, config: dict[str, object]) -> "_ConstantModel":
         return cls(torch.zeros(VOCAB_SIZE))
 
-    # Prequential: constant prediction, O(1) observe charging 1 decode FLOP.
+    # Unified seam: fold the byte (no-op), predict the constant, charge 1 FLOP.
+    def step(
+        self, state: DecodeState, revealed_byte: int, pos: int
+    ) -> tuple[DecodeState, torch.Tensor, FlopBreakdown]:
+        return (
+            DecodeState(length=state.length + 1),
+            self._logits,
+            FlopBreakdown(forward=1, backward=0),
+        )
+
+
+class _OnlineFrequencyModel(LanguageModel):
+    """An online Laplace frequency model: each step counts the revealed byte and
+    predicts proportional to counts. It genuinely learns at test time, so on a
+    repetitive stream its cumulative bpb drops far below a frozen model's. Charges
+    a `backward=1` per step to mark the adaptation as counted compute."""
+
+    def __init__(self):
+        super().__init__()
+        self.config = _StubConfig()
+
+    def forward(self, idx: torch.Tensor) -> torch.Tensor:
+        b, t = idx.shape
+        return torch.zeros(b, t, VOCAB_SIZE)
+
+    def flops(self, seq_len: int) -> FlopBreakdown:
+        return FlopBreakdown(forward=seq_len, backward=0)
+
+    @classmethod
+    def from_config(cls, config: dict[str, object]) -> "_OnlineFrequencyModel":
+        return cls()
+
     def init_prequential_state(self) -> DecodeState:
-        return DecodeState(next_logits=self._logits)
+        return DecodeState(cache=torch.ones(VOCAB_SIZE))  # Laplace prior
 
-    def observe(
-        self, state: DecodeState, token: int, pos: int
-    ) -> tuple[DecodeState, FlopBreakdown]:
-        return DecodeState(next_logits=self._logits), self.decode_step_flops(pos + 1)
-
-    def decode_step_flops(self, context_len: int) -> FlopBreakdown:
-        return FlopBreakdown(forward=1, backward=0)
-
-
-class _AdaptingModel(_ConstantModel):
-    """A constant model that ALSO pays a fixed cost every adaptation step."""
-
-    ADAPT = FlopBreakdown(forward=10, backward=20)
-
-    def adapt(self, state, optimizer, *, grad_clip=1.0):
-        return state, self.ADAPT
-
-    def adapt_step_flops(self, context_len: int) -> FlopBreakdown:
-        return self.ADAPT
+    def step(
+        self, state: DecodeState, revealed_byte: int, pos: int
+    ) -> tuple[DecodeState, torch.Tensor, FlopBreakdown]:
+        counts = state.cache.clone()
+        counts[revealed_byte] += 1.0  # online update from the revealed byte
+        next_logits = torch.log(counts)  # predict ∝ counts
+        # forward (predict) + backward (the online update) — both counted.
+        return (
+            DecodeState(cache=counts, length=state.length + 1),
+            next_logits,
+            FlopBreakdown(forward=1, backward=1),
+        )
 
 
 # --- (c) hand-computed prequential bpb ---------------------------------------
@@ -93,10 +117,12 @@ def test_constant_model_with_known_probability():
     logits = torch.zeros(VOCAB_SIZE)
     logits[65] = math.log(255.0)
     model = _ConstantModel(logits)
-    stream = np.full(6, 65, dtype=np.uint8)  # all 'A' -> each byte costs -log2(0.5) = 1 bit
+    stream = np.full(6, 65, dtype=np.uint8)  # all 'A'
     result = prequential_bpb(model, stream, device=CPU)
-    assert math.isclose(result.bpb, 1.0, rel_tol=1e-4)
-    assert math.isclose(result.total_bits, 6.0, rel_tol=1e-4)
+    # byte 0 = uniform prior (8 bits, no context); bytes 1..5 = -log2(0.5) = 1 bit
+    # each -> total = 8 + 5 = 13 bits over 6 bytes.
+    assert math.isclose(result.total_bits, 13.0, rel_tol=1e-4)
+    assert math.isclose(result.bpb, 13.0 / 6.0, rel_tol=1e-4)
 
 
 def test_score_bits_hand_cases():
@@ -136,22 +162,27 @@ def test_carve_eval_stream_disjoint_from_prior():
     assert np.unique(eval_stream).tolist() == [255]
 
 
-# --- (b) adaptation FLOPs are counted ----------------------------------------
-def test_adaptation_flops_strictly_increase_total():
-    stream = np.arange(20, dtype=np.uint8)
+# --- (b) adaptation actually moves the scored prediction AND is counted -------
+def test_adaptation_lowers_bpb_and_is_counted():
+    stream = np.full(40, 65, dtype=np.uint8)  # learnable: one repeated byte
     frozen = prequential_bpb(_ConstantModel(torch.zeros(VOCAB_SIZE)), stream, device=CPU)
-    adapting = prequential_bpb(
-        _AdaptingModel(torch.zeros(VOCAB_SIZE)), stream, device=CPU, adapt_interval=1
-    )
-    assert frozen.adapt_flops.total == 0
-    # adapt called once per byte after the first reveal -> (n-1) times.
-    n_adapt = len(stream) - 1
-    assert adapting.adapt_flops.total == n_adapt * _AdaptingModel.ADAPT.total
-    assert adapting.eval_flops > frozen.eval_flops  # strictly more total FLOPs
+    adapting = prequential_bpb(_OnlineFrequencyModel(), stream, device=CPU, collect_logits=True)
+    # Frozen never learns -> stays at the 8.0 uniform baseline.
+    assert math.isclose(frozen.bpb, 8.0, rel_tol=1e-6)
+    # Online adaptation MEASURABLY lowers cumulative bpb (the whole point).
+    assert adapting.bpb < frozen.bpb - 1.0
+    # Adaptation compute is counted through the single step channel (backward > 0).
+    assert adapting.flops.backward > 0
+    assert frozen.flops.backward == 0
+    # The scored prediction genuinely sharpens toward the seen byte over time.
+    early = torch.softmax(adapting.predicted_logits[2], dim=-1)[65].item()
+    late = torch.softmax(adapting.predicted_logits[30], dim=-1)[65].item()
+    assert late > early
 
 
 # --- transformer decode honesty ----------------------------------------------
 def test_kv_cache_decode_matches_full_forward():
+    # Growing regime (stream fits the context): incremental decode == full forward.
     torch.manual_seed(0)
     cfg = TransformerConfig(d_model=16, n_layers=2, n_heads=2, d_ff=32, max_seq_len=32)
     model = Transformer(cfg)
@@ -161,8 +192,31 @@ def test_kv_cache_decode_matches_full_forward():
         full = model(torch.tensor([stream]))[0]  # full[t] predicts byte t+1
     state = model.init_prequential_state()
     for pos in range(len(stream) - 1):
-        state, _ = model.observe(state, stream[pos], pos)
-        assert torch.allclose(state.next_logits, full[pos], atol=1e-5)
+        state, next_logits, _ = model.step(state, stream[pos], pos)
+        assert torch.allclose(next_logits, full[pos], atol=1e-5)
+
+
+def test_sliding_window_decode_matches_windowed_forward():
+    # Stream longer than the context window forces the bounded sliding regime.
+    torch.manual_seed(0)
+    w = 8
+    cfg = TransformerConfig(d_model=16, n_layers=2, n_heads=2, d_ff=32, max_seq_len=w)
+    model = Transformer(cfg)
+    model.eval()
+    stream = list(range(20))
+    state = model.init_prequential_state()
+    checked_sliding = False
+    for pos in range(len(stream) - 1):
+        state, next_logits, flops = model.step(state, stream[pos], pos)
+        if pos >= w:  # new_len = pos+1 > w -> sliding (bounded recompute)
+            window = stream[pos - w + 1 : pos + 1]  # last w revealed bytes
+            with torch.no_grad():
+                ref = model(torch.tensor([window]))[0, -1]
+            assert torch.allclose(next_logits, ref, atol=1e-5)
+            assert len(state.tokens) == w  # bounded memory: window capped at w
+            assert flops.forward == model.flops(w).forward  # recompute cost charged
+            checked_sliding = True
+    assert checked_sliding
 
 
 def test_decode_step_flops_forward_only_and_grows_with_context():
@@ -193,3 +247,27 @@ def test_prequential_run_total_is_pretrain_plus_eval(tmp_path):
     assert summary.eval_bytes == 120
     assert 0.0 < summary.bpb <= 8.5
     assert (tmp_path / "preq-smoke.jsonl").exists()
+
+
+def test_prequential_run_is_deterministic(tmp_path):
+    corpus = synthetic_text8(8000, seed=0)
+    prior, eval_stream = corpus.prequential_carve(eval_bytes=96)
+    model_config = {"d_model": 16, "n_layers": 2, "n_heads": 2, "max_seq_len": 256}
+
+    def run(name: str):
+        cfg = PrequentialConfig(
+            model="transformer",
+            model_config=model_config,
+            pretrain_flop_budget=2e8,
+            batch_size=8,
+            seq_len=32,
+            seed=0,
+            device="cpu",
+            run_name=name,
+        )
+        return prequential_run(prior, eval_stream, cfg, runs_dir=tmp_path)
+
+    a, b = run("det-a"), run("det-b")
+    assert a.bpb == b.bpb
+    assert a.total_flops == b.total_flops
+    assert a.pretrain_flops == b.pretrain_flops
