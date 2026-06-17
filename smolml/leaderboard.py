@@ -94,10 +94,7 @@ def load_run(path: str | Path) -> RunRecord:
     }
     if protocol == "prequential":
         budget = float(meta["pretrain_flop_budget"])
-        detail = (
-            f"stream={meta['eval_bytes']}B, pretrain={float(meta['pretrain_flops']):.2e}, "
-            f"adapt={meta['adapt_interval']}"
-        )
+        detail = f"stream={meta['eval_bytes']}B, pretrain={float(meta['pretrain_flops']):.2e}"
         return RunRecord(detail=detail, budget=budget, **common)
     budget = float(meta["flop_budget"])
     eval_seq_len = int(meta["eval_seq_len"])
@@ -164,7 +161,49 @@ def build_table(records: list[RunRecord]) -> str:
 
 
 def plot_bpb_vs_flops(records: list[RunRecord], out_png: str | Path) -> Path:
-    """Draw bpb-vs-FLOPs (log-x) for every run; amortized solid, prequential dashed."""
+    """Draw the budget-sweep curve: ONE final point per run (full-stream bpb vs
+    final FLOPs), connected within each (model, protocol) group in FLOP order.
+
+    This is the comparison curve the ADR means — each point is a finished run at a
+    budget. (Within-run prefix trajectories are a separate diagnostic; for a frozen
+    run they slope down only because the running average smooths and context grows,
+    which is easy to misread as compute efficiency.)
+    """
+    style = {"amortized": ("-", "o"), "prequential": ("--", "s")}
+    fig, ax = plt.subplots(figsize=(7, 5))
+    groups: dict[tuple[str, str], list[RunRecord]] = {}
+    for r in records:
+        if r.flops:
+            groups.setdefault((r.model, r.protocol), []).append(r)
+    for (model, protocol), group in sorted(groups.items()):
+        group.sort(key=lambda r: r.final_flops)
+        xs = [r.final_flops for r in group]
+        ys = [r.final_val_bpb for r in group]
+        linestyle, marker = style.get(protocol, ("-", "o"))
+        ax.plot(
+            xs, ys, linestyle=linestyle, marker=marker, markersize=6, label=f"{model} [{protocol}]"
+        )
+    ax.set_xscale("log")
+    ax.set_xlabel("total FLOPs (amortized: training | prequential: pretrain + eval)")
+    ax.set_ylabel("final bits-per-byte")
+    ax.set_title("smolml leaderboard — final bpb vs FLOPs budget sweep (lower is better)")
+    ax.grid(True, which="both", linestyle=":", alpha=0.5)
+    if groups:
+        ax.legend(fontsize=8)
+    fig.tight_layout()
+    out = Path(out_png)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=120)
+    plt.close(fig)
+    return out
+
+
+def plot_run_trajectories(records: list[RunRecord], out_png: str | Path) -> Path:
+    """Diagnostic: each run's WITHIN-run cumulative-bpb-vs-FLOPs trajectory.
+
+    Not the comparison curve (see :func:`plot_bpb_vs_flops`) — a per-run view of
+    how cumulative bpb evolves as the stream / training progresses.
+    """
     style = {"amortized": ("-", "o"), "prequential": ("--", "s")}
     fig, ax = plt.subplots(figsize=(7, 5))
     for r in records:
@@ -176,13 +215,13 @@ def plot_bpb_vs_flops(records: list[RunRecord], out_png: str | Path) -> Path:
             r.val_bpb,
             linestyle=linestyle,
             marker=marker,
-            markersize=4,
-            label=f"{r.run} [{r.protocol}] ({r.model})",
+            markersize=3,
+            label=f"{r.run} [{r.protocol}]",
         )
     ax.set_xscale("log")
-    ax.set_xlabel("cumulative FLOPs (amortized: training | prequential: total)")
-    ax.set_ylabel("bits-per-byte")
-    ax.set_title("smolml leaderboard — bpb vs FLOPs (lower is better)")
+    ax.set_xlabel("cumulative FLOPs")
+    ax.set_ylabel("cumulative bits-per-byte")
+    ax.set_title("smolml — per-run trajectories (diagnostic, NOT the budget-sweep curve)")
     ax.grid(True, which="both", linestyle=":", alpha=0.5)
     if records:
         ax.legend(fontsize=8)
