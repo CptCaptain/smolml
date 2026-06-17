@@ -1,12 +1,14 @@
-# The baseline harness (Task 0.1)
+# The measurement harness (Tasks 0.1 + 0.2)
 
 The foundation every candidate plugs into. This document is the **contract**: a
-new mechanism is added by reading *this*, not the harness source. It is amortized
-(train/val) for now; the prequential/online mode and inference-FLOP accounting are
-Task 0.2, built on top of these same interfaces without redesign.
+new mechanism is added by reading *this*, not the harness source. Two evaluation
+modes share one model interface and one FLOP counter: the **amortized** train/val
+harness (§1–§4) and the **prequential / online** mode with total-FLOP accounting
+(§5, Task 0.2 — built on the same interfaces).
 
-The one metric is **validation bits-per-byte at a fixed training-FLOP budget** on
-a tiny byte-level corpus. Lower bpb at equal FLOPs wins; nothing else counts.
+The one metric is **bits-per-byte at a fixed FLOP budget** on a tiny byte-level
+corpus — training FLOPs (amortized) or total FLOPs incl. inference + adaptation
+(prequential). Lower bpb at equal FLOPs wins; nothing else counts.
 
 ```mermaid
 graph LR
@@ -230,27 +232,87 @@ independent of the training `seq_len`, because bpb depends on conditioning lengt
 
 ## 4. The leaderboard
 
-`smolml/leaderboard.py` reads every `runs/*.jsonl`, sorts by final `val_bpb`
-(lowest first), renders a markdown table — with `eval ctx`, `val%`, and `budget`
-columns — and plots each run's bpb-vs-training-FLOPs trajectory on a log-x axis,
-saved as a PNG.
+`smolml/leaderboard.py` reads every `runs/*.jsonl`, sorts by final bpb (lowest
+first), and renders a **protocol-aware** markdown table (`protocol`, `params`,
+`final FLOPs`, `final bpb`, and a per-protocol `detail`) plus a log-x plot. Each
+run is a bpb-vs-FLOPs trajectory: x is cumulative *training* FLOPs for amortized
+runs and cumulative *total* FLOPs for prequential runs; amortized lines are solid,
+prequential dashed.
 
 ```python
 collect_runs(runs_dir) -> list[RunRecord]
-build_table(records)   -> str           # markdown (with protocol columns + warnings)
+build_table(records)   -> str           # markdown (protocol-aware + warnings)
 protocol_warnings(records) -> list[str] # comparability warnings
 plot_bpb_vs_flops(records, out_png) -> Path
 regenerate(runs_dir, table_path=None, plot_path="runs/leaderboard.png") -> (table, png)
 ```
 
-**Ranking is only fair within one eval protocol AND one FLOP budget.** Ranking by
-final bpb across different budgets is apples-to-oranges (more budget → lower bpb
-trivially), so `build_table` prepends a `> WARNING:` line when runs differ on
-`(eval_seq_len, val_fraction)` or on `flop_budget`. The bpb-vs-FLOP **plot** spans
-budgets on purpose (that is the curve); the **table** ranking does not. Corpus
-identity is not auto-tracked — only compare runs on the same corpus.
+**Ranking is only fair within one protocol, one eval protocol, and one FLOP
+budget.** Amortized val bpb and prequential bpb are different numbers; ranking
+across budgets is apples-to-oranges (more budget → lower bpb trivially). So
+`build_table` prepends a `> WARNING:` line when runs span multiple protocols,
+amortized `(eval_seq_len, val_fraction)`, or budgets. The **plot** spans budgets
+and both protocols on purpose (that is the curve); the **table** ranking does not.
+Corpus identity is not auto-tracked — only compare runs on the same corpus.
 
 Regenerate after new runs land — it is reproducible and never hand-edited.
+
+## 5. Prequential / online mode + total-FLOP accounting (Task 0.2)
+
+The real metric (ADR 0004): predict each byte **before** it is revealed, pay
+−log₂ p bits, then *may* adapt; score cumulative bpb against a **total**-FLOP
+budget (pretraining + inference + adaptation). The amortized path (§1–§4) is
+unchanged and still works.
+
+### The decode/adapt seam (model interface extension)
+
+`LanguageModel` gains five methods, all with working defaults so existing models
+keep running; a model overrides them for efficiency or to add online adaptation:
+
+```python
+init_prequential_state(self) -> DecodeState        # fresh per-stream state (byte 0 = uniform prior)
+predict_logits(self, state) -> Tensor              # logits for the NEXT byte — past observations only
+observe(self, state, token, pos) -> (state, FlopBreakdown)   # reveal a byte; return new state + decode FLOPs
+adapt(self, state, optimizer, *, grad_clip) -> (state, FlopBreakdown)  # optional online update (default: no-op, 0)
+decode_step_flops(self, context_len) -> FlopBreakdown   # incremental per-byte prediction cost (forward-only)
+adapt_step_flops(self, context_len) -> FlopBreakdown    # one online-update cost (0 for a frozen model)
+```
+
+The transformer overrides `observe`/`init_prequential_state`/`decode_step_flops`
+with a **KV cache**: decoding one byte costs `O(d²)` projections + `O(context·d)`
+attention (1 query vs `context` cached keys), forward-only. A test asserts the
+cached decode is bit-identical to a full `forward` over the same prefix. The
+frozen transformer baseline does not adapt, so its `adapt_step_flops` is 0 (the
+honest value); a future fast-weight candidate overrides `adapt` and spends real
+adaptation FLOPs on the same budget.
+
+### The loop (leakage is structural)
+
+`smolml/prequential.py::prequential_bpb` does, per byte: `predict_logits` (sees
+only already-`observe`-d bytes) → score the true byte → `observe` it (reveal) →
+optional `adapt`. The model never receives byte `t` while predicting it; the
+leakage test perturbs the stream at/after `t` and asserts the prediction at `t`
+is bit-identical. Decode and adapt FLOPs are accumulated exactly as the model
+reports them — the budget cannot be gamed by hiding compute at eval.
+
+`prequential_run` orchestrates a baseline: pretrain on the prior corpus to a FLOP
+ceiling (`pretrain`), then frozen (or adapting) prequential eval; total FLOPs =
+pretrain + Σ decode (+ Σ adapt). It writes a `protocol="prequential"` JSONL whose
+step lines trace cumulative bpb vs cumulative total FLOPs.
+
+### Data carve (ADR 0004)
+
+`ByteCorpus.prequential_carve(eval_bytes)` returns `(prior, eval_stream)`: the
+**final `eval_bytes`** are the fixed eval stream (never trained on), the prefix is
+the prior corpus — structurally disjoint, so pretraining cannot leak the eval
+bytes. Full enwik8 uses `ENWIK8_EVAL_BYTES` (5 MB) and is opt-in/network-bound;
+tests and the smoke run use a tiny `eval_bytes` over the offline `synthetic_text8`
+clone, fully offline.
+
+**Limitation (documented):** the transformer's KV-cache decode uses absolute RoPE
+with a growing cache, so the eval stream must fit the model context
+(`len(eval_stream) <= max_seq_len`); sliding-window decode for streams longer than
+the context is future work. Tiny offline streams fit comfortably.
 
 ## Caveats (known gaps; do not over-read small deltas)
 
@@ -280,7 +342,14 @@ uv run smolml train --data enwik8 --enwik8-bytes 5000000 --budget 1e13
 # CI-scale synthetic text8 clone (no network)
 uv run smolml train --data synthetic --synthetic-bytes 1000000 --budget 1e11
 
-# regenerate the leaderboard table + plot from all run logs
+# prequential / online eval at a TOTAL-FLOP budget (offline clone, carved stream).
+# Sweep pretrain budgets to draw a bpb-vs-total-FLOP curve.
+uv run smolml prequential --data synthetic --synthetic-bytes 200000 \
+    --eval-bytes 512 --pretrain-budget 1e10 --d-model 48 --layers 3 --run-name preq-b1e10
+# the real carve (final 5 MB = eval stream) is opt-in / network-bound
+uv run smolml prequential --data enwik8 --eval-bytes 5000000 --pretrain-budget 1e13
+
+# regenerate the leaderboard table + plot from all run logs (amortized + prequential)
 uv run smolml leaderboard --runs-dir runs --table runs/leaderboard.md --plot runs/leaderboard.png
 ```
 
