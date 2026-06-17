@@ -97,4 +97,5 @@ def test_end_to_end_smoke(tmp_path):
     assert rec.model == "transformer"
     assert rec.params == summary.params
     assert rec.final_val_bpb == summary.final_val_bpb
-    assert rec.steps == len(steps)
+    assert rec.steps == summary.steps  # final optimizer-step count
+    assert rec.n_points == len(steps)  # one curve point per logged step

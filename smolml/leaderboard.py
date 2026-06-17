@@ -30,6 +30,7 @@ class RunRecord:
     flop_budget: float
     flops: list[int] = field(default_factory=list)
     val_bpb: list[float] = field(default_factory=list)
+    opt_steps: list[int] = field(default_factory=list)
 
     @property
     def final_flops(self) -> int:
@@ -41,6 +42,12 @@ class RunRecord:
 
     @property
     def steps(self) -> int:
+        """Optimizer steps taken (final logged ``step``)."""
+        return self.opt_steps[-1] if self.opt_steps else 0
+
+    @property
+    def n_points(self) -> int:
+        """Number of logged points on the bpb-vs-FLOPs curve."""
         return len(self.flops)
 
 
@@ -49,6 +56,7 @@ def load_run(path: str | Path) -> RunRecord:
     meta: dict = {}
     flops: list[int] = []
     bpb: list[float] = []
+    opt_steps: list[int] = []
     with Path(path).open() as fh:
         for line in fh:
             line = line.strip()
@@ -60,6 +68,7 @@ def load_run(path: str | Path) -> RunRecord:
             elif obj.get("type") == "step":
                 flops.append(int(obj["cumulative_flops"]))
                 bpb.append(float(obj["val_bpb"]))
+                opt_steps.append(int(obj["step"]))
     if not meta:
         raise ValueError(f"{path}: missing meta line")
     return RunRecord(
@@ -71,6 +80,7 @@ def load_run(path: str | Path) -> RunRecord:
         flop_budget=float(meta["flop_budget"]),
         flops=flops,
         val_bpb=bpb,
+        opt_steps=opt_steps,
     )
 
 
