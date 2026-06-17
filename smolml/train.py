@@ -23,7 +23,7 @@ Run log (one JSON object per line, ``runs/<run>.jsonl``)
 import json
 import math
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
@@ -183,8 +183,3 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
         elapsed_sec=time.perf_counter() - start_perf,
         log_path=str(log_path),
     )
-
-
-def train_config_to_dict(cfg: TrainConfig) -> dict:
-    """Serialize a TrainConfig (handy for logging/CLI)."""
-    return asdict(cfg)
