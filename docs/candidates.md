@@ -70,6 +70,14 @@ loss-reduction per FLOP). This both grounds the hunt and further falsifies the p
 | Growing / morphing networks | Start tiny, add capacity only at loss plateaus | No FLOPs wasted on capacity that can't yet be used | amortized | idea |
 | Cheap preconditioned updates | Lightweight 2nd-order-ish steps (Sophia/Shampoo-lite) | Fewer steps to a given loss (less "weird", solid (iv)) | amortized | idea |
 
-Open boundary question (being grilled): **amortized vs. transductive** — must a candidate
-yield a reusable, promptable model, or is single-pass online prediction allowed? This decides
-whether the whole context-mixing literature is in-scope or merely an inspiration.
+Boundary RESOLVED: **hybrid / continual-learning models are the chosen direction.** Amortized
+pretraining is allowed; test-time adaptation is allowed *iff its FLOPs are counted*. Pure
+transductive compression is inspiration + a per-FLOP ceiling, not the target.
+
+PROPOSED (being grilled) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
+total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot
+leak the future — honest generalization with no held-out split needed), then may adapt on the
+revealed byte. Score = cumulative bpb over the evaluation stream at a fixed *total*-FLOP budget
+(pretraining + online + prediction). This protocol subsumes amortized (all FLOPs up front,
+then frozen), transductive (zero pretraining), and hybrid as points on one spectrum, compared
+fairly. Would amend ADR 0001's eval protocol and require a follow-up harness task.

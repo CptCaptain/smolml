@@ -44,5 +44,22 @@ and (iii) no activation storage (memory only). See ADR 0003.
 ### Amortized vs. transductive
 *Amortized* learning trains a reusable model once, then answers many queries (transformers).
 *Transductive* learning re-learns per input stream (classic online context-mixing
-compressors). Which of these counts as a valid candidate is a project boundary still under
-discussion.
+compressors). RESOLVED: **hybrids are first-class** (an amortized model that keeps adapting).
+Pure transductive single-stream compression is out-of-scope as a *target* (not forbidden as
+inspiration / as a per-FLOP ceiling).
+
+### Continual / online learning (in scope, a goal)
+A qualifying artifact may keep learning as it sees data, rather than freezing after training.
+This is desirable in its own right (a reusable model that adapts), not just a means to lower
+loss.
+
+### Total-FLOP accounting (inference counted)
+The FLOP budget counts **all** compute: pretraining + any inference/test-time-learning +
+prediction. Test-time adaptation is never free — a hybrid that learns at inference pays for
+those FLOPs in the same budget, so it cannot game the metric by hiding compute at eval.
+
+### Compression = prediction
+Not a distinction: cumulative one-step-ahead log-loss equals compressed length (arithmetic
+coding). "Lower bpb" and "better predictive model" are the same objective. The thing we
+actually want beyond low bpb is *reusability + continual adaptation*, not the avoidance of
+compression.
