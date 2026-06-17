@@ -29,9 +29,7 @@ def cross_entropy_bits(logits: torch.Tensor, targets: torch.Tensor) -> tuple[flo
     before dividing.
     """
     vocab = logits.size(-1)
-    loss_nats = F.cross_entropy(
-        logits.reshape(-1, vocab), targets.reshape(-1), reduction="sum"
-    )
+    loss_nats = F.cross_entropy(logits.reshape(-1, vocab), targets.reshape(-1), reduction="sum")
     return loss_nats.item() / _LN2, int(targets.numel())
 
 
