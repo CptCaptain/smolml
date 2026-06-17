@@ -1,0 +1,71 @@
+The scout walks the idea space the way a careful reader walks a long sentence:
+one step at a time, predicting what comes next, and paying attention when the
+guess is wrong. That habit is the whole project in miniature. A model that
+predicts the next byte well is, by the plainest possible argument, a model that
+compresses the text well, because the number of bits you need to store a symbol
+is the negative logarithm of the probability you assigned to it. Predict better
+and you spend fewer bits. Spend fewer bits and you have, by definition,
+predicted better. There is no daylight between the two ideas, and pretending
+otherwise only invites confusion.
+
+We measure everything in bits per byte. A model that knows nothing assigns equal
+probability to all two hundred and fifty six byte values, which costs eight bits
+for every byte it sees. A model that has learned the shape of English text spends
+far less, because after the letter q it expects a u, after a period it expects a
+space and a capital letter, and after the word the it expects a noun before long.
+Each small expectation, when it is correct, shaves a fraction of a bit off the
+running total, and those fractions accumulate into the gap between a clever model
+and a clueless one.
+
+The trap we are stepping around is the belief that a bigger model is the only
+road to a better one. Scaling laws are real and they are humbling: validation
+loss falls smoothly as you pour in more parameters, more data, and more compute,
+and the curve has been measured carefully enough that nobody serious argues with
+it anymore. But the curve describes one family of learners. It does not prove
+that this family is the most compute efficient family that could exist. That is
+the open question, and it is the question worth a scout, because answering it does
+not require a warehouse of accelerators, only a fair scoreboard and a steady hand.
+
+A fair scoreboard counts compute in floating point operations rather than seconds.
+Seconds depend on the chip, the kernel, the phase of the moon. Floating point
+operations depend only on the arithmetic the algorithm actually performs, so a
+matrix multiply costs the same whether it runs on a laptop or a rented cluster.
+That is why the harness carries an honest counter that adds up the multiplies and
+the adds, charges the backward pass its fair share, and refuses to let any
+candidate hide its true cost behind a fast implementation. The counter is the
+referee. If the referee is wrong, every match it judges is wrong with it, so we
+check its arithmetic by hand and we keep the checks where everyone can read them.
+
+Training proceeds against a fixed budget of operations rather than a fixed number
+of steps. We let a model learn until it has spent its allowance, record how low
+its validation bits per byte fell, and plot that point against the operations it
+burned getting there. Run several budgets and the points become a curve. Lay two
+curves on the same axes and the comparison is immediate: at any given budget, the
+lower curve is the better learner, and the better learner is the one we keep.
+
+The baseline is a transformer, built plainly and counted honestly. It normalizes
+before each sublayer rather than after, scales activations by their root mean
+square, and rotates its queries and keys so that position is encoded by angle
+rather than by an added vector. Attention is causal, which means a position may
+look only at the positions behind it, never ahead, because looking ahead would be
+cheating at the very prediction game we are scoring. None of these choices are
+exotic; they are simply the quiet conventions that a careful baseline ought to
+follow, so that when a candidate beats it we can trust the victory.
+
+What would a real victory look like? Not a clever trick that runs faster on one
+machine, and not a model that happens to answer a trivia question. A real victory
+is a mechanism whose learning dynamics extract more reduction in loss from each
+operation than backpropagation through a transformer manages. Maybe it memorizes
+cheaply and saves its expensive gradients for genuine generalization. Maybe it
+adapts as it reads, paying for that adaptation out of the same honest budget, and
+still comes out ahead. We do not know, and the not knowing is the entire reason to
+look. The scout does not promise to find treasure. The scout promises to search
+the ground carefully, to mark the dry holes as clearly as the wet ones, and to
+leave a map good enough that the next person does not have to dig blind.
+
+So we begin with the boring, load bearing work: a clean data pipeline, a referee
+we trust, a baseline we respect, and a leaderboard that cannot be gamed. Only once
+that foundation holds do the interesting questions become askable at all. A
+question you cannot measure is a daydream. A question you can measure, cheaply and
+honestly and as many times as you like, is a research program. The difference
+between the two is exactly the harness, and the harness is what we build first.
