@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# uv
+# (uv.lock IS committed — reproducible env)
+
+# Project artifacts (generated runs / plots / downloaded corpora)
+runs/
+data/cache/
+*.png
+!docs/**/*.png
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
