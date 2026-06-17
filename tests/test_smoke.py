@@ -45,10 +45,11 @@ def test_end_to_end_smoke(tmp_path):
 
     summary = train_run(load_sample(), cfg, runs_dir=runs_dir)
 
-    # Budget honored: stopped at/after budget, took a small number of steps.
+    # Budget is a ceiling: never overspent, and an exact multiple is hit exactly.
     assert summary.steps >= 1
-    assert summary.total_flops >= cfg.flop_budget
+    assert summary.total_flops <= cfg.flop_budget
     assert summary.total_flops == step_flops * summary.steps
+    assert summary.steps == 12  # budget = 12 * step_flops -> exactly 12 steps fit
     assert summary.device == "cpu"
 
     # JSONL log exists, with a meta line and well-formed step lines.

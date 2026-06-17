@@ -1,9 +1,10 @@
 """Training loop to a fixed FLOP budget, with per-run JSONL logging.
 
-The budget is a **training-FLOP** allowance (forward + backward of the training
-steps), counted by the shared :mod:`smolml.flops` accounting — never wall-clock.
-Training stops as soon as cumulative training FLOPs reach the budget, so two
-models are compared at equal compute regardless of how fast they run.
+The budget is a **training-FLOP** allowance (forward + the model's own update
+per step), counted by the shared :mod:`smolml.flops` accounting — never
+wall-clock. The budget is a **ceiling**: a step runs only if it still fits, so a
+run never overspends and every run's endpoint sits at ``<= budget`` FLOPs — equal
+compute, comparable endpoints, regardless of per-step cost.
 
 Run log (one JSON object per line, ``runs/<run>.jsonl``)
 -------------------------------------------------------
@@ -75,11 +76,16 @@ class RunSummary:
 
 
 def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs") -> RunSummary:
-    """Train ``cfg.model`` on ``corpus`` until the FLOP budget is spent.
+    """Train ``cfg.model`` on ``corpus`` until the FLOP budget would be exceeded.
 
-    Writes a JSONL log under ``runs_dir`` and returns a :class:`RunSummary`.
-    Deterministic given ``cfg.seed`` and the corpus.
+    The budget is a ceiling: the final ``total_flops`` is ``<= cfg.flop_budget``.
+    If the budget is too small for even one step, the run still logs a step-0
+    point (0 FLOPs, init losses). Writes a JSONL log under ``runs_dir`` and
+    returns a :class:`RunSummary`. Deterministic given ``cfg.seed`` and the
+    corpus. Raises ``ValueError`` if ``flop_budget <= 0``.
     """
+    if cfg.flop_budget <= 0:
+        raise ValueError(f"flop_budget must be positive, got {cfg.flop_budget}")
     torch.manual_seed(cfg.seed)
     device = get_device(cfg.device)
     batch_gen = torch.Generator().manual_seed(cfg.seed)
@@ -88,6 +94,13 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
     model = build_model(cfg.model, cfg.model_config).to(device)
     model.train()
     optimizer = model.configure_optimizer(lr=cfg.lr, weight_decay=cfg.weight_decay, betas=cfg.betas)
+
+    # Look-ahead estimate of one step's cost, used as the budget *ceiling* gate.
+    # (Accumulation below uses the FLOPs train_step actually reports; for the
+    # constant-cost transformer the two coincide exactly.)
+    step_flops = model.flops(cfg.seq_len).scale(cfg.batch_size).total
+    if step_flops <= 0:
+        raise ValueError(f"model reports non-positive step cost: {step_flops}")
     run_name = cfg.run_name or f"{cfg.model}-{int(time.time())}"
     runs_path = Path(runs_dir)
     runs_path.mkdir(parents=True, exist_ok=True)
@@ -100,6 +113,18 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
         return evaluate_bpb(
             model,
             val_data,
+            batch_size=cfg.batch_size,
+            seq_len=cfg.seq_len,
+            device=device,
+            n_batches=cfg.eval_batches,
+        )
+
+    def measure_train_bpb() -> float:
+        # Used only for the step-0 log line (no optimizer step has run yet);
+        # a no-grad forward over train batches, not charged to the budget.
+        return evaluate_bpb(
+            model,
+            train_data,
             batch_size=cfg.batch_size,
             seq_len=cfg.seq_len,
             device=device,
@@ -127,6 +152,7 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
         cumulative_flops = 0
         last_logged_step = -1
         final_bpb = math.nan
+        last_train_bpb = math.nan
 
         def log_step(train_bpb: float, val_bpb: float) -> None:
             nonlocal last_logged_step
@@ -142,18 +168,26 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
             log.flush()
             last_logged_step = step
 
-        while step == 0 or cumulative_flops < cfg.flop_budget:
+        # Budget is a CEILING: take a step only if it still fits, so a run never
+        # overspends and every run's endpoint sits at <= budget FLOPs (endpoints
+        # are comparable across models regardless of per-step cost).
+        while cumulative_flops + step_flops <= cfg.flop_budget:
             x, y = get_batch(train_data, cfg.batch_size, cfg.seq_len, device, batch_gen)
             loss, spent = model.train_step((x, y), optimizer, grad_clip=cfg.grad_clip)
             cumulative_flops += spent.total
             step += 1
+            last_train_bpb = loss.item() / _LN2
             if step % cfg.eval_interval == 0:
                 final_bpb = evaluate()
-                log_step(loss.item() / _LN2, final_bpb)
+                log_step(last_train_bpb, final_bpb)
 
+        # Always log a final point — including the degenerate case where the
+        # budget was too small for even one step (step 0, 0 FLOPs).
         if last_logged_step != step:
+            if step == 0:
+                last_train_bpb = measure_train_bpb()
             final_bpb = evaluate()
-            log_step(loss.item() / _LN2, final_bpb)
+            log_step(last_train_bpb, final_bpb)
 
     return RunSummary(
         run=run_name,
