@@ -65,7 +65,7 @@ loss-reduction per FLOP). This both grounds the hunt and further falsifies the p
 | Mechanism | Out-of-the-box idea | Source-(iv) story | Amortized? | Status |
 |---|---|---|---|---|
 | Online context-mixing | Mixture of many cheap predictors, weights learned online in one pass | Single-pass online learning; proven low bpb on enwik8 | transductive | idea |
-| Fast-weight associative memory + slow core | O(1) Hebbian/Hopfield store for rote memorization; gradient core for generalization | Memorization made FLOP-cheap frees compute for generalization | amortized | idea |
+| Fast-weight associative memory + slow core | O(1) Hebbian/Hopfield store for rote memorization; gradient core for generalization | Memorization made FLOP-cheap frees compute for generalization | hybrid | **PHASE A — queued** |
 | Active data / loss selection | Spend FLOPs only on high-information bytes (RHO-loss / online hard-example mining) | Same FLOPs, more loss reduced — pure (iv) | amortized | idea |
 | Growing / morphing networks | Start tiny, add capacity only at loss plateaus | No FLOPs wasted on capacity that can't yet be used | amortized | idea |
 | Cheap preconditioned updates | Lightweight 2nd-order-ish steps (Sophia/Shampoo-lite) | Fewer steps to a given loss (less "weird", solid (iv)) | amortized | idea |
