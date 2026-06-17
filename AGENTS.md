@@ -58,6 +58,9 @@ walls of text.
 
 - Each task gets its own branch + worktree and opens **its own PR**. Do **not** merge — a human
   merges after review.
+- **Commit incrementally** — small, logical commits as you go (e.g. "data loader", "FLOP counter
+  + test", "baseline model"), never one giant end-of-task commit. Keeps progress visible,
+  reviewable, and recoverable. The orchestrator does the same for docs.
 - Every PR is reviewed by a **different vendor** than the implementer (cross-review). Reviewers
   report; they do not edit.
 - Run the gates and paste results in the PR: `uvx ruff format --check`, `uvx ruff check`,
