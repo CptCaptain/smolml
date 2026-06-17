@@ -58,6 +58,11 @@ The FLOP budget counts **all** compute: pretraining + any inference/test-time-le
 prediction. Test-time adaptation is never free — a hybrid that learns at inference pays for
 those FLOPs in the same budget, so it cannot game the metric by hiding compute at eval.
 
+### Prequential evaluation (the protocol)
+The model predicts each unit of the stream *before* it is revealed (log-loss in bits), then
+may adapt on it. Score = cumulative bpb over the evaluation stream at a fixed *total*-FLOP
+budget, reported as a curve. The one definition of "win" now. See ADR 0004.
+
 ### Compression = prediction
 Not a distinction: cumulative one-step-ahead log-loss equals compressed length (arithmetic
 coding). "Lower bpb" and "better predictive model" are the same objective. The thing we

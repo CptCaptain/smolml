@@ -74,7 +74,7 @@ Boundary RESOLVED: **hybrid / continual-learning models are the chosen direction
 pretraining is allowed; test-time adaptation is allowed *iff its FLOPs are counted*. Pure
 transductive compression is inspiration + a per-FLOP ceiling, not the target.
 
-PROPOSED (being grilled) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
+LOCKED (ADR 0004) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
 total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot
 leak the future — honest generalization with no held-out split needed), then may adapt on the
 revealed byte. Score = cumulative bpb over the evaluation stream at a fixed *total*-FLOP budget
