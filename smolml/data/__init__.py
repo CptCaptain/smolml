@@ -1,6 +1,7 @@
 """Byte-level data pipeline."""
 
 from smolml.data.corpus import (
+    ENWIK8_EVAL_BYTES,
     ENWIK8_URL,
     VOCAB_SIZE,
     ByteCorpus,
@@ -11,6 +12,7 @@ from smolml.data.corpus import (
 )
 
 __all__ = [
+    "ENWIK8_EVAL_BYTES",
     "ENWIK8_URL",
     "VOCAB_SIZE",
     "ByteCorpus",

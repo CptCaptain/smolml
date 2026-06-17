@@ -23,6 +23,8 @@ VOCAB_SIZE: int = 256
 
 _SAMPLE_PATH = Path(__file__).parent / "sample" / "sample.txt"
 ENWIK8_URL = "http://mattmahoney.net/dc/enwik8.zip"
+ENWIK8_EVAL_BYTES: int = 5_000_000
+"""ADR 0004 carve: the final 5 MB of enwik8 is the fixed prequential eval stream."""
 
 
 class ByteCorpus:
@@ -52,6 +54,21 @@ class ByteCorpus:
         if n_val >= n:
             raise ValueError("corpus too small for the requested val_fraction")
         return self.data[: n - n_val], self.data[n - n_val :]
+
+    def prequential_carve(self, eval_bytes: int) -> tuple[np.ndarray, np.ndarray]:
+        """Carve into (prior_corpus, eval_stream) per ADR 0004.
+
+        The **final ``eval_bytes``** are the fixed prequential eval stream (scored
+        one byte at a time, never trained on); the preceding prefix is the
+        freely-usable prior corpus. Deterministic tail carve — the eval stream is
+        structurally disjoint from the prior, so pretraining on the prior cannot
+        leak the eval bytes. For full enwik8, ``eval_bytes = ENWIK8_EVAL_BYTES``
+        (5 MB); tests/smoke pass a tiny value over the offline clone.
+        """
+        n = len(self)
+        if not 0 < eval_bytes < n:
+            raise ValueError(f"eval_bytes must be in (0, {n}), got {eval_bytes}")
+        return self.data[: n - eval_bytes], self.data[n - eval_bytes :]
 
 
 def load_sample() -> ByteCorpus:
