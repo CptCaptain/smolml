@@ -8,9 +8,11 @@ compute, comparable endpoints, regardless of per-step cost.
 
 Run log (one JSON object per line, ``runs/<run>.jsonl``)
 -------------------------------------------------------
-- line 1 — ``{"type": "meta", ...}``: run identity and hyperparameters
-  (run, model, config, params, device, seed, flop_budget, batch_size, seq_len,
-  lr, started_at).
+- line 1 — ``{"type": "meta", ...}``: run identity, the **resolved** model config
+  (defaults filled in), and every training hyperparameter (run, model, config,
+  params, device, seed, flop_budget, batch_size, seq_len, eval_seq_len,
+  eval_batches, eval_interval, val_fraction, lr, weight_decay, betas, grad_clip,
+  started_at) — so a run is reproducible from its log alone.
 - each later line — ``{"type": "step", "wallclock", "step", "cumulative_flops",
   "train_loss", "val_bpb"}``:
     - ``wallclock`` — seconds elapsed since training started,
@@ -24,7 +26,7 @@ Run log (one JSON object per line, ``runs/<run>.jsonl``)
 import json
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pathlib import Path
 
 import torch
@@ -139,11 +141,17 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
         )
 
     with log_path.open("w") as log:
+        # Log the RESOLVED model config (defaults filled in, e.g. d_ff), not the
+        # partial request dict, plus every TrainConfig hyperparameter — so a run
+        # is reproducible from its log alone.
+        resolved_config = (
+            asdict(model.config) if is_dataclass(model.config) else dict(cfg.model_config)
+        )
         meta = {
             "type": "meta",
             "run": run_name,
             "model": cfg.model,
-            "config": cfg.model_config,
+            "config": resolved_config,
             "params": model.num_params(),
             "device": device.type,
             "seed": cfg.seed,
@@ -151,8 +159,13 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
             "batch_size": cfg.batch_size,
             "seq_len": cfg.seq_len,
             "eval_seq_len": cfg.eval_seq_len,
+            "eval_batches": cfg.eval_batches,
+            "eval_interval": cfg.eval_interval,
             "val_fraction": cfg.val_fraction,
             "lr": cfg.lr,
+            "weight_decay": cfg.weight_decay,
+            "betas": list(cfg.betas),
+            "grad_clip": cfg.grad_clip,
             "started_at": started_at,
         }
         log.write(json.dumps(meta) + "\n")

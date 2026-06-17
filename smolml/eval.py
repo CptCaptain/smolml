@@ -12,6 +12,7 @@ nothing (uniform over 256 bytes) scores exactly 8.0 bpb.
 
 import math
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -42,7 +43,7 @@ def bits_per_byte(logits: torch.Tensor, targets: torch.Tensor) -> float:
 @torch.no_grad()
 def evaluate_bpb(
     model: LanguageModel,
-    val_data,
+    val_data: np.ndarray,
     *,
     batch_size: int,
     seq_len: int,
