@@ -4,8 +4,11 @@ Examples
 --------
     uv run smolml train --data sample --budget 5e9 --d-model 128 --layers 4
     uv run smolml prequential --data synthetic --synthetic-bytes 200000 \\
-        --eval-bytes 400 --pretrain-budget 1e10 --d-model 32 --layers 2
-    uv run smolml prequential --data enwik8 --eval-bytes 5000000 --pretrain-budget 1e13
+        --eval-bytes 512 --context-window 512 --pretrain-budget 1e10 --d-model 48 --layers 3
+    # the real 5 MB enwik8 carve runs in bounded memory via sliding-window decode,
+    # but is millions of forward passes — opt-in, GPU-scale, NOT a quick CLI run:
+    #   uv run smolml prequential --data enwik8 --eval-bytes 5000000 \\
+    #       --context-window 512 --pretrain-budget 1e13
     uv run smolml leaderboard --runs-dir runs
 """
 
@@ -72,8 +75,9 @@ def _cmd_prequential(args: argparse.Namespace) -> None:
         "d_model": args.d_model,
         "n_layers": args.layers,
         "n_heads": args.heads,
-        # KV-cache decode needs the context to hold the whole eval stream
-        "max_seq_len": max(args.seq_len, len(eval_stream)),
+        # The model's context window; streams longer than it use bounded
+        # sliding-window decode. Default (= seq_len) keeps memory bounded.
+        "max_seq_len": args.context_window,
     }
     cfg = PrequentialConfig(
         model=args.model,
@@ -82,7 +86,6 @@ def _cmd_prequential(args: argparse.Namespace) -> None:
         batch_size=args.batch_size,
         seq_len=args.seq_len,
         lr=args.lr,
-        adapt_interval=args.adapt_interval,
         checkpoint_interval=args.checkpoint_interval,
         seed=args.seed,
         run_name=args.run_name,
@@ -135,9 +138,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--layers", type=int, default=3)
     p.add_argument("--heads", type=int, default=4)
     p.add_argument("--seq-len", type=int, default=64)
+    p.add_argument(
+        "--context-window",
+        type=int,
+        default=512,
+        help="model context length; longer streams use bounded sliding-window decode",
+    )
     p.add_argument("--batch-size", type=int, default=16)
     p.add_argument("--lr", type=float, default=3e-3)
-    p.add_argument("--adapt-interval", type=int, default=0, help="0=frozen; k=adapt every k bytes")
     p.add_argument("--checkpoint-interval", type=int, default=200)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--run-name", default=None)

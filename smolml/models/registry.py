@@ -24,23 +24,23 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from smolml.data.corpus import VOCAB_SIZE
 from smolml.flops import FlopBreakdown
 
 
 @dataclass
 class DecodeState:
-    """Per-stream prequential decode state.
+    """Per-stream prequential decode state, threaded through :meth:`LanguageModel.step`.
 
-    ``next_logits`` is the model's distribution for the **upcoming** byte, derived
-    only from bytes already observed — the predict-before-reveal guarantee lives
-    here. ``cache`` is model-specific (e.g. a transformer KV cache); ``tokens`` is
-    the revealed-byte history the generic recompute fallback replays.
+    ``tokens`` is the rolling window of the most recent revealed bytes (capped at
+    ``context_window`` — bounded memory); ``cache`` is model-specific (e.g. a
+    transformer KV cache, a fast-weight memory); ``length`` counts bytes folded so
+    far. The next-byte distribution is *returned* by ``step`` (never stashed here),
+    so there is no off-channel place to hide prediction-time compute.
     """
 
-    next_logits: torch.Tensor
     tokens: list[int] = field(default_factory=list)
     cache: object = None
+    length: int = 0
 
 
 class LanguageModel(nn.Module, abc.ABC):
@@ -120,52 +120,59 @@ class LanguageModel(nn.Module, abc.ABC):
         return loss, self.flops(t).scale(b)
 
     # --- Prequential / online decode seam (Task 0.2) ---------------------------
-    # Predict the next byte BEFORE it is revealed, then optionally adapt on it.
-    # Defaults give every model a correct (if O(context^2)) recompute path; a
-    # model overrides them for efficiency or to add real online adaptation.
+    # ONE per-byte channel: ``step`` folds the revealed byte, runs any online
+    # adaptation, computes the next distribution, and returns ALL FLOPs spent.
+    # There is no separate predict method, so prediction-time compute (a
+    # fast-weight read, a context-mixer's mixing) CANNOT be charged 0 by omission.
+
+    @property
+    def context_window(self) -> int | None:
+        """Max bytes of context conditioned on per prediction (None = unbounded).
+
+        Bounds the rolling window (and a transformer's KV cache), so a long stream
+        runs in bounded memory and every post-warmup byte is conditioned on the
+        same length. Defaults to the model's ``max_seq_len`` if it declares one.
+        """
+        return getattr(self.config, "max_seq_len", None)
 
     def init_prequential_state(self) -> DecodeState:
-        """Fresh per-stream state. The first byte is predicted from a uniform
-        prior (zero logits) since there is no context yet."""
-        return DecodeState(next_logits=torch.zeros(VOCAB_SIZE))
+        """Fresh per-stream state (byte 0 is scored by the loop against a uniform
+        prior, since there is no context yet)."""
+        return DecodeState()
 
-    def predict_logits(self, state: DecodeState) -> torch.Tensor:
-        """Logits ``(vocab,)`` for the upcoming byte — past observations only."""
-        return state.next_logits
+    def step(
+        self, state: DecodeState, revealed_byte: int, pos: int
+    ) -> tuple[DecodeState, torch.Tensor, FlopBreakdown]:
+        """Fold ``revealed_byte`` (at absolute ``pos``), adapt, predict — one step.
 
-    def observe(
-        self, state: DecodeState, token: int, pos: int
-    ) -> tuple[DecodeState, FlopBreakdown]:
-        """Incorporate revealed ``token`` at ``pos``; return (new_state, decode_flops).
+        Returns ``(new_state, next_logits, flops)`` where ``next_logits`` is the
+        distribution for byte ``pos+1`` and ``flops`` is **every** FLOP spent this
+        step (folding + adaptation + prediction). The harness accumulates exactly
+        this, so compute cannot hide at eval time.
 
-        Generic fallback: replay the (context-capped) revealed history through
-        ``forward`` and read the last position's logits. Charges
-        ``decode_step_flops(window_len)`` — the cost it actually computed.
+        Default: bounded windowed **recompute** — replay the last
+        ``context_window`` revealed bytes through ``forward`` and read the last
+        position. Correct for any model and bounded in memory; a model with an
+        incremental decode (the transformer's KV cache) overrides this for speed.
+        Frozen by default (no adaptation); an online candidate adapts here and
+        adds its update FLOPs to the returned breakdown.
         """
-        tokens = [*state.tokens, token]
-        cap = getattr(self.config, "max_seq_len", None)
-        window = tokens[-cap:] if cap else tokens
+        window = [*state.tokens, revealed_byte]
+        cap = self.context_window
+        if cap is not None:
+            window = window[-cap:]
         device = next(self.parameters()).device
         x = torch.tensor([window], dtype=torch.long, device=device)
         with torch.no_grad():
-            logits = self(x)[0, -1].detach()
-        return DecodeState(next_logits=logits, tokens=tokens), self.decode_step_flops(len(window))
+            next_logits = self(x)[0, -1].detach()
+        flops = FlopBreakdown(forward=self.flops(len(window)).forward, backward=0)
+        return DecodeState(tokens=window, length=state.length + 1), next_logits, flops
 
     def decode_step_flops(self, context_len: int) -> FlopBreakdown:
-        """Forward-only FLOPs to predict one byte given ``context_len`` of context.
-        Default = the generic recompute cost (a full forward over the window)."""
+        """Analytic forward-only cost of one decode step conditioned on
+        ``context_len`` bytes. Default = a full recompute forward over the window;
+        a model with an incremental decode overrides it to match its real cost."""
         return FlopBreakdown(forward=self.flops(context_len).forward, backward=0)
-
-    def adapt(
-        self, state: DecodeState, optimizer: torch.optim.Optimizer | None, *, grad_clip: float = 1.0
-    ) -> tuple[DecodeState, FlopBreakdown]:
-        """Optional online update from the revealed history; return
-        (new_state, adapt_flops). Default = frozen (no update, zero FLOPs)."""
-        return state, FlopBreakdown()
-
-    def adapt_step_flops(self, context_len: int) -> FlopBreakdown:
-        """FLOPs of one online-adaptation step. Default = 0 (frozen model)."""
-        return FlopBreakdown()
 
 
 _REGISTRY: dict[str, type[LanguageModel]] = {}

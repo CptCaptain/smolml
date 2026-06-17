@@ -227,35 +227,49 @@ class Transformer(LanguageModel):
         forward = cfg.n_layers * per_layer + linear_flops(t, d, cfg.vocab_size)
         return FlopBreakdown.from_forward(forward)
 
-    # --- Prequential decode (KV-cache override; O(context_len) per byte) -------
+    # --- Prequential decode: growing KV cache (O(context), exact), then a -------
+    # bounded windowed recompute once the context window is full. -----------------
 
     def init_prequential_state(self) -> DecodeState:
-        # First byte predicted from a uniform prior; one empty KV slot per layer.
-        return DecodeState(
-            next_logits=torch.zeros(self.config.vocab_size),
-            cache=[None] * self.config.n_layers,
-        )
+        # One empty KV slot per layer; byte 0 is scored by the loop (uniform prior).
+        return DecodeState(cache=[None] * self.config.n_layers)
 
-    def observe(
-        self, state: DecodeState, token: int, pos: int
-    ) -> tuple[DecodeState, FlopBreakdown]:
+    def step(
+        self, state: DecodeState, revealed_byte: int, pos: int
+    ) -> tuple[DecodeState, torch.Tensor, FlopBreakdown]:
         cfg = self.config
-        if pos >= cfg.max_seq_len:
-            raise ValueError(
-                f"prequential position {pos} reaches max_seq_len {cfg.max_seq_len}; "
-                "size max_seq_len >= eval-stream length (sliding-window decode is future work)"
-            )
+        window_cap = cfg.max_seq_len
+        new_len = state.length + 1
+        window = [*state.tokens, revealed_byte][-window_cap:]
+        if state.cache is not None and new_len <= window_cap:
+            # GROWING regime: incremental KV cache, exact, O(new_len). The new
+            # token sits at absolute position `pos` (== new_len - 1).
+            if pos != new_len - 1:
+                raise ValueError(
+                    f"step expects consecutive positions: pos={pos}, length={new_len - 1}"
+                )
+            device = self.rope_cos.device
+            x = self.tok_emb(torch.tensor([[revealed_byte]], dtype=torch.long, device=device))
+            cos, sin = self.rope_cos[pos : pos + 1], self.rope_sin[pos : pos + 1]
+            new_cache: list[tuple[torch.Tensor, torch.Tensor]] = []
+            with torch.no_grad():
+                for block, kv in zip(self.blocks, state.cache, strict=True):
+                    x, nkv = block.decode_step(x, cos, sin, kv)
+                    new_cache.append(nkv)
+                next_logits = self.head(self.norm_f(x))[0, -1].detach()
+            # Attended new_len keys (cache of new_len-1 plus the new token).
+            flops = self.decode_step_flops(new_len)
+            return DecodeState(tokens=window, cache=new_cache, length=new_len), next_logits, flops
+        # SLIDING regime: a multi-layer KV cache cannot slide without staleness
+        # (upper-layer keys were built under earlier windows), so once the window
+        # is full we recompute a full forward over the last `window_cap` bytes —
+        # exact, bounded memory, and length-matched. The cache is dropped.
         device = self.rope_cos.device
-        x = self.tok_emb(torch.tensor([[token]], dtype=torch.long, device=device))
-        cos, sin = self.rope_cos[pos : pos + 1], self.rope_sin[pos : pos + 1]
-        new_cache: list[tuple[torch.Tensor, torch.Tensor]] = []
+        x = torch.tensor([window], dtype=torch.long, device=device)
         with torch.no_grad():
-            for block, kv in zip(self.blocks, state.cache, strict=True):
-                x, nkv = block.decode_step(x, cos, sin, kv)
-                new_cache.append(nkv)
-            logits = self.head(self.norm_f(x))[0, -1].detach()
-        # This step attended pos+1 keys (the cache of pos plus the new token).
-        return DecodeState(next_logits=logits, cache=new_cache), self.decode_step_flops(pos + 1)
+            next_logits = self(x)[0, -1].detach()
+        flops = FlopBreakdown(forward=self.flops(len(window)).forward, backward=0)
+        return DecodeState(tokens=window, cache=None, length=new_len), next_logits, flops
 
     def decode_step_flops(self, context_len: int) -> FlopBreakdown:
         """Incremental per-byte prediction cost with a KV cache: O(d^2) projections

@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from smolml.data.corpus import get_batch
+from smolml.data.corpus import VOCAB_SIZE, get_batch
 from smolml.device import get_device
 from smolml.flops import FlopBreakdown
 from smolml.models.registry import LanguageModel, build_model
@@ -42,8 +42,7 @@ class PrequentialResult:
 
     total_bits: float
     n_bytes: int
-    decode_flops: FlopBreakdown
-    adapt_flops: FlopBreakdown
+    flops: FlopBreakdown  # ALL per-byte compute (prediction + any adaptation), one channel
     # (bytes_seen, cumulative_eval_flops, cumulative_bpb) trajectory checkpoints.
     checkpoints: list[tuple[int, int, float]] = field(default_factory=list)
     # Per-position predicted logits, only when collect_logits=True (tests).
@@ -55,8 +54,8 @@ class PrequentialResult:
 
     @property
     def eval_flops(self) -> int:
-        """Total inference + adaptation FLOPs spent over the stream."""
-        return (self.decode_flops + self.adapt_flops).total
+        """Total per-byte FLOPs (inference + any test-time adaptation)."""
+        return self.flops.total
 
 
 def prequential_bpb(
@@ -64,19 +63,20 @@ def prequential_bpb(
     stream: np.ndarray,
     *,
     device: torch.device,
-    adapt_interval: int = 0,
-    optimizer: torch.optim.Optimizer | None = None,
-    grad_clip: float = 1.0,
     checkpoint_interval: int = 0,
     collect_logits: bool = False,
 ) -> PrequentialResult:
-    """Score ``stream`` prequentially; accumulate decode (and adapt) FLOPs.
+    """Score ``stream`` prequentially through the single ``step`` channel.
 
-    ``adapt_interval`` > 0 calls ``model.adapt`` every that-many bytes (0 = frozen).
+    Per byte: ``model.step(state, revealed_byte, pos)`` folds the byte, runs any
+    online adaptation, and returns the next-byte distribution plus **all** FLOPs
+    it spent — accumulated here. Byte 0 has no context, so it is scored against a
+    uniform prior (8 bits, no model compute); every model-computed prediction
+    flows through ``step``, so compute cannot hide at eval time. Whether the model
+    adapts is the model's business (the loop just measures).
+
     ``checkpoint_interval`` > 0 records a (bytes, eval_flops, bpb) trajectory point
-    every that-many bytes (the final point is always recorded). The returned FLOPs
-    are exactly what the model reported computing — the budget honestly includes
-    inference and any test-time adaptation.
+    every that-many bytes (the final point is always recorded).
     """
     if len(stream) < 1:
         raise ValueError("eval stream must be non-empty")
@@ -86,33 +86,25 @@ def prequential_bpb(
 
     state = model.init_prequential_state()
     total_bits = 0.0
-    decode = FlopBreakdown()
-    adapt = FlopBreakdown()
+    flops = FlopBreakdown()
     checkpoints: list[tuple[int, int, float]] = []
     logits_log: list[torch.Tensor] = []
+    uniform = torch.zeros(VOCAB_SIZE)
 
     def record_checkpoint(bytes_seen: int) -> None:
-        checkpoints.append((bytes_seen, (decode + adapt).total, total_bits / bytes_seen))
+        checkpoints.append((bytes_seen, flops.total, total_bits / bytes_seen))
 
-    # Byte 0 is predicted from the prior (no observations yet).
-    logits = model.predict_logits(state)
+    # Byte 0: no context -> uniform prior (8 bits), zero model FLOPs.
     if collect_logits:
-        logits_log.append(logits)
-    total_bits += score_bits(logits, bytes_[0])
+        logits_log.append(uniform)
+    total_bits += score_bits(uniform, bytes_[0])
 
     for pos in range(n - 1):
-        # Reveal byte `pos` (already scored), fold it into the state.
-        state, step_decode = model.observe(state, bytes_[pos], pos)
-        decode += step_decode
-        if adapt_interval and (pos + 1) % adapt_interval == 0:
-            state, step_adapt = model.adapt(state, optimizer, grad_clip=grad_clip)
-            adapt += step_adapt
-        # Predict byte `pos+1` BEFORE it is revealed (next iteration observes it).
-        logits = model.predict_logits(state)
+        state, next_logits, step_flops = model.step(state, bytes_[pos], pos)
+        flops += step_flops
         if collect_logits:
-            logits_log.append(logits)
-        total_bits += score_bits(logits, bytes_[pos + 1])
-
+            logits_log.append(next_logits)
+        total_bits += score_bits(next_logits, bytes_[pos + 1])
         bytes_seen = pos + 2
         if checkpoint_interval and bytes_seen % checkpoint_interval == 0:
             record_checkpoint(bytes_seen)
@@ -123,8 +115,7 @@ def prequential_bpb(
     return PrequentialResult(
         total_bits=total_bits,
         n_bytes=n,
-        decode_flops=decode,
-        adapt_flops=adapt,
+        flops=flops,
         checkpoints=checkpoints,
         predicted_logits=logits_log if collect_logits else None,
     )
@@ -178,7 +169,6 @@ class PrequentialConfig:
     weight_decay: float = 0.1
     betas: tuple[float, float] = (0.9, 0.95)
     grad_clip: float = 1.0
-    adapt_interval: int = 0
     seed: int = 0
     checkpoint_interval: int = 0
     device: str | None = None
@@ -199,7 +189,6 @@ class PrequentialSummary:
     total_flops: int
     eval_bytes: int
     bpb: float
-    adapt_interval: int
     log_path: str
 
 
@@ -211,20 +200,15 @@ def prequential_run(
 ) -> PrequentialSummary:
     """Pretrain on the prior corpus, then score the eval stream prequentially.
 
-    Total FLOPs = pretraining + Σ decode (+ Σ adapt). Writes a JSONL log
-    (``protocol="prequential"``) whose step lines trace cumulative bpb vs.
-    cumulative **total** FLOPs, and returns a :class:`PrequentialSummary`.
+    The pretrain FLOP budget is an enforced ceiling; total FLOPs = pretrain +
+    Σ per-byte step FLOPs (inference + any adaptation), which is *reported*, not
+    capped. Streams longer than the model context are handled by the bounded
+    sliding-window decode. Writes a ``protocol="prequential"`` JSONL and returns a
+    :class:`PrequentialSummary`.
     """
     torch.manual_seed(cfg.seed)
     device = get_device(cfg.device)
     model = build_model(cfg.model, cfg.model_config).to(device)
-    max_ctx = getattr(model.config, "max_seq_len", None)
-    if max_ctx is not None and len(eval_stream) > max_ctx:
-        raise ValueError(
-            f"eval stream ({len(eval_stream)} bytes) exceeds model max context {max_ctx}; "
-            "size max_seq_len >= eval-stream length (sliding-window decode is future work)"
-        )
-
     start_perf = time.perf_counter()
     pretrain_flops = pretrain(
         model,
@@ -239,18 +223,10 @@ def prequential_run(
         seed=cfg.seed,
         device=device,
     )
-    optimizer = (
-        model.configure_optimizer(lr=cfg.lr, weight_decay=cfg.weight_decay, betas=cfg.betas)
-        if cfg.adapt_interval
-        else None
-    )
     result = prequential_bpb(
         model,
         eval_stream,
         device=device,
-        adapt_interval=cfg.adapt_interval,
-        optimizer=optimizer,
-        grad_clip=cfg.grad_clip,
         checkpoint_interval=cfg.checkpoint_interval,
     )
     total_flops = pretrain_flops + result.eval_flops
@@ -275,7 +251,6 @@ def prequential_run(
             "pretrain_flop_budget": cfg.pretrain_flop_budget,
             "pretrain_flops": pretrain_flops,
             "eval_bytes": result.n_bytes,
-            "adapt_interval": cfg.adapt_interval,
             "started_at": time.time(),
         }
         log.write(json.dumps(meta) + "\n")
@@ -306,6 +281,5 @@ def prequential_run(
         total_flops=total_flops,
         eval_bytes=result.n_bytes,
         bpb=result.bpb,
-        adapt_interval=cfg.adapt_interval,
         log_path=str(log_path),
     )
