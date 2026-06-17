@@ -90,7 +90,7 @@ def test_end_to_end_smoke(tmp_path):
     assert png.exists()
     assert png.stat().st_size > 0
     assert "transformer" in table
-    assert "final val bpb" in table
+    assert "final bpb" in table
 
     records = collect_runs(runs_dir)
     assert len(records) == 1

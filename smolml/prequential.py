@@ -12,15 +12,20 @@ true byte *before* the next ``observe`` reveals it. The model never receives byt
 the stream at/after position ``t`` leaves the prediction at ``t`` bit-identical.
 """
 
+import json
 import math
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
+from smolml.data.corpus import get_batch
+from smolml.device import get_device
 from smolml.flops import FlopBreakdown
-from smolml.models.registry import LanguageModel
+from smolml.models.registry import LanguageModel, build_model
 
 _LN2 = math.log(2.0)
 
@@ -122,4 +127,185 @@ def prequential_bpb(
         adapt_flops=adapt,
         checkpoints=checkpoints,
         predicted_logits=logits_log if collect_logits else None,
+    )
+
+
+def pretrain(
+    model: LanguageModel,
+    train_data: np.ndarray,
+    *,
+    flop_budget: float,
+    batch_size: int,
+    seq_len: int,
+    lr: float,
+    weight_decay: float,
+    betas: tuple[float, float],
+    grad_clip: float,
+    seed: int,
+    device: torch.device,
+) -> int:
+    """Amortized pretraining on the prior corpus to a FLOP ceiling.
+
+    Mirrors the amortized training loop (budget is a ceiling) but writes no log
+    and returns the **training** FLOPs spent — the pretraining share of the total
+    budget. ``flop_budget`` below one step trains nothing (a valid zero-pretrain,
+    fully-transductive point on the curve).
+    """
+    if flop_budget < 0:
+        raise ValueError(f"flop_budget must be non-negative, got {flop_budget}")
+    model.train()
+    gen = torch.Generator().manual_seed(seed)
+    optimizer = model.configure_optimizer(lr=lr, weight_decay=weight_decay, betas=betas)
+    step_flops = model.flops(seq_len).scale(batch_size).total
+    spent = 0
+    while spent + step_flops <= flop_budget:
+        x, y = get_batch(train_data, batch_size, seq_len, device, gen)
+        _, step = model.train_step((x, y), optimizer, grad_clip=grad_clip)
+        spent += step.total
+    return spent
+
+
+@dataclass
+class PrequentialConfig:
+    """Configuration for a prequential run (pretrain budget + eval protocol)."""
+
+    model: str = "transformer"
+    model_config: dict[str, object] = field(default_factory=dict)
+    pretrain_flop_budget: float = 1e10
+    batch_size: int = 16
+    seq_len: int = 64
+    lr: float = 3e-3
+    weight_decay: float = 0.1
+    betas: tuple[float, float] = (0.9, 0.95)
+    grad_clip: float = 1.0
+    adapt_interval: int = 0
+    seed: int = 0
+    checkpoint_interval: int = 0
+    device: str | None = None
+    run_name: str | None = None
+
+
+@dataclass
+class PrequentialSummary:
+    """Result of a prequential run (the leaderboard re-derives this from the log)."""
+
+    run: str
+    model: str
+    params: int
+    device: str
+    seed: int
+    pretrain_flops: int
+    eval_flops: int
+    total_flops: int
+    eval_bytes: int
+    bpb: float
+    adapt_interval: int
+    log_path: str
+
+
+def prequential_run(
+    prior_corpus: np.ndarray,
+    eval_stream: np.ndarray,
+    cfg: PrequentialConfig,
+    runs_dir: str | Path = "runs",
+) -> PrequentialSummary:
+    """Pretrain on the prior corpus, then score the eval stream prequentially.
+
+    Total FLOPs = pretraining + Σ decode (+ Σ adapt). Writes a JSONL log
+    (``protocol="prequential"``) whose step lines trace cumulative bpb vs.
+    cumulative **total** FLOPs, and returns a :class:`PrequentialSummary`.
+    """
+    torch.manual_seed(cfg.seed)
+    device = get_device(cfg.device)
+    model = build_model(cfg.model, cfg.model_config).to(device)
+    max_ctx = getattr(model.config, "max_seq_len", None)
+    if max_ctx is not None and len(eval_stream) > max_ctx:
+        raise ValueError(
+            f"eval stream ({len(eval_stream)} bytes) exceeds model max context {max_ctx}; "
+            "size max_seq_len >= eval-stream length (sliding-window decode is future work)"
+        )
+
+    start_perf = time.perf_counter()
+    pretrain_flops = pretrain(
+        model,
+        prior_corpus,
+        flop_budget=cfg.pretrain_flop_budget,
+        batch_size=cfg.batch_size,
+        seq_len=cfg.seq_len,
+        lr=cfg.lr,
+        weight_decay=cfg.weight_decay,
+        betas=cfg.betas,
+        grad_clip=cfg.grad_clip,
+        seed=cfg.seed,
+        device=device,
+    )
+    optimizer = (
+        model.configure_optimizer(lr=cfg.lr, weight_decay=cfg.weight_decay, betas=cfg.betas)
+        if cfg.adapt_interval
+        else None
+    )
+    result = prequential_bpb(
+        model,
+        eval_stream,
+        device=device,
+        adapt_interval=cfg.adapt_interval,
+        optimizer=optimizer,
+        grad_clip=cfg.grad_clip,
+        checkpoint_interval=cfg.checkpoint_interval,
+    )
+    total_flops = pretrain_flops + result.eval_flops
+
+    run_name = cfg.run_name or f"{cfg.model}-preq-{int(time.time())}"
+    runs_path = Path(runs_dir)
+    runs_path.mkdir(parents=True, exist_ok=True)
+    log_path = runs_path / f"{run_name}.jsonl"
+    resolved_config = (
+        model.config.__dict__ if hasattr(model.config, "__dict__") else dict(cfg.model_config)
+    )
+    with log_path.open("w") as log:
+        meta = {
+            "type": "meta",
+            "protocol": "prequential",
+            "run": run_name,
+            "model": cfg.model,
+            "config": resolved_config,
+            "params": model.num_params(),
+            "device": device.type,
+            "seed": cfg.seed,
+            "pretrain_flop_budget": cfg.pretrain_flop_budget,
+            "pretrain_flops": pretrain_flops,
+            "eval_bytes": result.n_bytes,
+            "adapt_interval": cfg.adapt_interval,
+            "started_at": time.time(),
+        }
+        log.write(json.dumps(meta) + "\n")
+        # Trajectory: cumulative bpb vs cumulative TOTAL FLOPs (pretrain + eval-so-far).
+        for bytes_seen, eval_flops_so_far, cum_bpb in result.checkpoints:
+            log.write(
+                json.dumps(
+                    {
+                        "type": "step",
+                        "wallclock": time.perf_counter() - start_perf,
+                        "step": bytes_seen,
+                        "cumulative_flops": pretrain_flops + eval_flops_so_far,
+                        "train_loss": None,
+                        "val_bpb": cum_bpb,
+                    }
+                )
+                + "\n"
+            )
+
+    return PrequentialSummary(
+        run=run_name,
+        model=cfg.model,
+        params=model.num_params(),
+        device=device.type,
+        seed=cfg.seed,
+        pretrain_flops=pretrain_flops,
+        eval_flops=result.eval_flops,
+        total_flops=total_flops,
+        eval_bytes=result.n_bytes,
+        bpb=result.bpb,
+        adapt_interval=cfg.adapt_interval,
+        log_path=str(log_path),
     )

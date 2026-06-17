@@ -149,6 +149,7 @@ def train_run(corpus: ByteCorpus, cfg: TrainConfig, runs_dir: str | Path = "runs
         )
         meta = {
             "type": "meta",
+            "protocol": "amortized",
             "run": run_name,
             "model": cfg.model,
             "config": resolved_config,

@@ -1,9 +1,11 @@
-"""Command-line entry point: train a run, or regenerate the leaderboard.
+"""Command-line entry point: train (amortized), prequential eval, or leaderboard.
 
 Examples
 --------
     uv run smolml train --data sample --budget 5e9 --d-model 128 --layers 4
-    uv run smolml train --data enwik8 --enwik8-bytes 5000000 --budget 1e13
+    uv run smolml prequential --data synthetic --synthetic-bytes 200000 \\
+        --eval-bytes 400 --pretrain-budget 1e10 --d-model 32 --layers 2
+    uv run smolml prequential --data enwik8 --eval-bytes 5000000 --pretrain-budget 1e13
     uv run smolml leaderboard --runs-dir runs
 """
 
@@ -11,6 +13,7 @@ import argparse
 
 from smolml.data.corpus import ByteCorpus, load_sample, prepare_enwik8, synthetic_text8
 from smolml.leaderboard import regenerate
+from smolml.prequential import PrequentialConfig, prequential_run
 from smolml.train import TrainConfig, train_run
 
 
@@ -62,6 +65,39 @@ def _cmd_leaderboard(args: argparse.Namespace) -> None:
     print(f"\nplot: {png}")
 
 
+def _cmd_prequential(args: argparse.Namespace) -> None:
+    corpus = _load_corpus(args)
+    prior, eval_stream = corpus.prequential_carve(eval_bytes=args.eval_bytes)
+    model_config = {
+        "d_model": args.d_model,
+        "n_layers": args.layers,
+        "n_heads": args.heads,
+        # KV-cache decode needs the context to hold the whole eval stream
+        "max_seq_len": max(args.seq_len, len(eval_stream)),
+    }
+    cfg = PrequentialConfig(
+        model=args.model,
+        model_config=model_config,
+        pretrain_flop_budget=args.pretrain_budget,
+        batch_size=args.batch_size,
+        seq_len=args.seq_len,
+        lr=args.lr,
+        adapt_interval=args.adapt_interval,
+        checkpoint_interval=args.checkpoint_interval,
+        seed=args.seed,
+        run_name=args.run_name,
+        device=args.device,
+    )
+    summary = prequential_run(prior, eval_stream, cfg, runs_dir=args.runs_dir)
+    print(
+        f"run={summary.run} model={summary.model} params={summary.params:,} "
+        f"device={summary.device} eval_bytes={summary.eval_bytes} "
+        f"pretrain={summary.pretrain_flops:.3e} eval={summary.eval_flops:.3e} "
+        f"total={summary.total_flops:.3e} bpb={summary.bpb:.4f}"
+    )
+    print(f"log: {summary.log_path}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="smolml", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -87,6 +123,27 @@ def main(argv: list[str] | None = None) -> None:
     t.add_argument("--device", default=None, help="override cuda>mps>cpu auto-detect")
     t.add_argument("--runs-dir", default="runs")
     t.set_defaults(func=_cmd_train)
+
+    p = sub.add_parser("prequential", help="prequential/online eval at a total-FLOP budget")
+    p.add_argument("--model", default="transformer")
+    p.add_argument("--data", default="synthetic", choices=["sample", "synthetic", "enwik8"])
+    p.add_argument("--synthetic-bytes", type=int, default=200_000)
+    p.add_argument("--enwik8-bytes", type=int, default=None)
+    p.add_argument("--eval-bytes", type=int, default=2000, help="final-bytes prequential stream")
+    p.add_argument("--pretrain-budget", type=float, default=1e10, help="pretraining-FLOP budget")
+    p.add_argument("--d-model", type=int, default=64)
+    p.add_argument("--layers", type=int, default=3)
+    p.add_argument("--heads", type=int, default=4)
+    p.add_argument("--seq-len", type=int, default=64)
+    p.add_argument("--batch-size", type=int, default=16)
+    p.add_argument("--lr", type=float, default=3e-3)
+    p.add_argument("--adapt-interval", type=int, default=0, help="0=frozen; k=adapt every k bytes")
+    p.add_argument("--checkpoint-interval", type=int, default=200)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--run-name", default=None)
+    p.add_argument("--device", default=None, help="override cuda>mps>cpu auto-detect")
+    p.add_argument("--runs-dir", default="runs")
+    p.set_defaults(func=_cmd_prequential)
 
     lb = sub.add_parser("leaderboard", help="regenerate table + plot from run logs")
     lb.add_argument("--runs-dir", default="runs")
