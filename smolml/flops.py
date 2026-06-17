@@ -31,16 +31,20 @@ Conventions (assumptions made explicit)
   rule (2 FLOPs/param/token forward, 4 backward) generalized to also charge the
   attention activation matmuls.
 
-Extensibility (Task 0.2 hook — do not build 0.2 here)
+Extensibility toward Task 0.2 (do NOT build 0.2 here)
 -----------------------------------------------------
-``FlopBreakdown`` keeps ``forward`` and ``backward`` separate on purpose:
+``FlopBreakdown`` keeps ``forward`` and ``backward`` separate, and these
+primitives are reusable, so the prequential/total-FLOP mode (ADR 0004) builds on
+this foundation rather than replacing it:
 
 - **training** step  -> ``forward + backward`` (``.total``),
-- **inference** step -> ``forward`` only (no ``.backward``),
-- **online adaptation** step -> ``forward + backward`` of the adapted submodule.
+- **inference** step -> ``forward`` only (no ``.backward``).
 
-A future prequential/total-FLOP mode reuses these primitives and the same
-``FlopBreakdown`` to add inference and adaptation paths with no redesign.
+But it is an interface **extension**, not free: prequential prediction and
+test-time adaptation are *context-length dependent*, so Task 0.2 will ADD methods
+such as ``decode_step_flops(context_len)`` and ``adapt_step_flops(context_len)``
+to the model interface (and generalize :meth:`LanguageModel.train_step` to an
+``adapt`` path). Those methods are deliberately **not** implemented here.
 """
 
 from dataclasses import dataclass
