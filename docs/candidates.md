@@ -80,4 +80,8 @@ leak the future — honest generalization with no held-out split needed), then m
 revealed byte. Score = cumulative bpb over the evaluation stream at a fixed *total*-FLOP budget
 (pretraining + online + prediction). This protocol subsumes amortized (all FLOPs up front,
 then frozen), transductive (zero pretraining), and hybrid as points on one spectrum, compared
-fairly. Would amend ADR 0001's eval protocol and require a follow-up harness task.
+fairly. Amends ADR 0001's eval protocol (see ADR 0004); requires a follow-up harness task.
+
+Data carve (LOCKED, ADR 0004): enwik8 byte-level; **final 5 MB = fixed prequential eval
+stream** (no leakage); first ~95 MB = freely-usable prior corpus capped by the total-FLOP
+budget; adaptation during eval allowed (FLOPs counted); CI uses a scaled `text8` clone.

@@ -37,5 +37,9 @@ This is the prequential / online-MDL principle. The metric *spirit* from ADR 000
 
 - The first harness (train/val split) remains valid foundation; a follow-up task adds the
   prequential/online eval mode and inference-FLOP accounting on top.
-- Open sub-decision: how to carve enwik8 into a freely-usable prior corpus vs. the fixed
-  evaluation stream (see CONTEXT.md / candidates.md).
+- Data carve (resolved): **enwik8, byte-level.** The **final 5 MB is the fixed prequential
+  evaluation stream**, identical for every candidate and never part of the prior corpus (no
+  leakage). The first ~95 MB is a **freely-usable prior corpus** — amortized pretraining,
+  online warmup, or none — capped only by the total-FLOP budget. Adaptation *during* the eval
+  stream is allowed, with its FLOPs counted. CI/tests use a scaled-down `text8` clone with the
+  identical protocol. Results are a bpb-vs-total-FLOP curve.
