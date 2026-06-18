@@ -26,8 +26,9 @@ This mechanism's dominant compute is **not** matmuls — it is table lookups, co
 updates, and logistic mixing. Charging only matmuls would score it as nearly free
 (a silent cheat). So every per-byte op is charged through the non-matmul
 primitives :func:`~smolml.flops.pointwise_flops` and
-:func:`~smolml.flops.gather_flops`. The exact per-step derivation lives in
-:meth:`ContextMixing.step_flops` and the concept page
+:func:`~smolml.flops.gather_flops` — and charged **exactly for the branches
+executed** that byte (no constant over-estimate). The derivation lives in
+:meth:`ContextMixing._flop_breakdown` and the concept page
 ``docs/learning/concepts/context-mixing.md``.
 """
 
@@ -147,9 +148,11 @@ class ContextMixing(LanguageModel):
         return torch.from_numpy(out).to(idx.device)
 
     def flops(self, seq_len: int) -> FlopBreakdown:
-        """One teacher-forced online pass over ``seq_len`` bytes = per-byte cost
-        (:meth:`step_flops`) replicated ``seq_len`` times."""
-        return self.step_flops().scale(seq_len)
+        """Analytic per-sequence cost = the *steady-state* per-byte estimate
+        (:meth:`_steady_step_flops`) replicated ``seq_len`` times. Config-derived
+        (not data-dependent), per the harness contract; the measured prequential
+        curve uses :meth:`step`'s exact per-byte charge instead."""
+        return self._steady_step_flops().scale(seq_len)
 
     def configure_optimizer(self, *, lr: float, weight_decay: float, betas: tuple[float, float]):
         """No gradient parameters to optimize; return a trivial optimizer that the
@@ -186,13 +189,14 @@ class ContextMixing(LanguageModel):
     ) -> tuple[DecodeState, torch.Tensor, FlopBreakdown]:
         """Fold ``revealed_byte``, adapt the mixer, predict the next byte.
 
-        Order of operations (all FLOPs charged in :meth:`step_flops`):
+        Order of operations (every FLOP charged exactly for the branches actually
+        executed this byte — see :meth:`_flop_breakdown`):
         1. grade the pending prediction on ``revealed_byte`` -> one SGD step on the
-           mixer weights;
-        2. fold ``revealed_byte`` into each order-k count table (context = the bytes
-           preceding it);
-        3. predict the next byte: per-order Laplace prob -> stretch (log) -> mix ->
-           softmax; return ``z`` as length-256 logits.
+           mixer weights (skipped on the first byte, which had no prediction);
+        2. fold ``revealed_byte`` into each *available* order-k count table
+           (context = the bytes preceding it);
+        3. predict the next byte: Laplace prob (only for active, already-seen
+           contexts) -> stretch (log) -> mix -> softmax; return ``z`` as logits.
         """
         cfg = self.config
         ms: _MixerState = state.cache
@@ -200,13 +204,16 @@ class ContextMixing(LanguageModel):
         window = state.tokens  # up to max_order bytes preceding `pos`
 
         # 1. Online mixer update on the just-revealed byte (graded prediction).
-        if ms.last_probs is not None:
+        did_update = ms.last_probs is not None
+        if did_update:
             grad = mixer_gradient(ms.last_probs, ms.last_stretched, revealed_byte)
             ms.weights -= cfg.lr * grad
 
-        # 2. Fold the revealed byte into the order-k tables (preceding context).
+        # 2. Fold the revealed byte into each *available* order-k table.
+        n_fold = 0
         for k in range(self.num_predictors):
             if k == 0 or len(window) >= k:
+                n_fold += 1
                 key = bytes(window[-k:]) if k else b""
                 cell = ms.tables[k].get(key)
                 if cell is None:
@@ -218,12 +225,19 @@ class ContextMixing(LanguageModel):
         cap = cfg.max_order
         new_window = [*window, revealed_byte][-cap:] if cap else []
         stretched = np.empty((self.num_predictors, v))
+        n_active = 0
+        n_laplace = 0
         for k in range(self.num_predictors):
             cell = None
             if k == 0 or len(new_window) >= k:
+                n_active += 1
                 key = bytes(new_window[-k:]) if k else b""
                 cell = ms.tables[k].get(key)
-            prob = laplace_prob(cell, cfg.alpha) if cell is not None else self._uniform
+            if cell is not None:
+                n_laplace += 1
+                prob = laplace_prob(cell, cfg.alpha)
+            else:
+                prob = self._uniform
             stretched[k] = np.log(prob)
         z = mix_logits(stretched, ms.weights)
         probs = softmax(z)
@@ -232,36 +246,57 @@ class ContextMixing(LanguageModel):
         ms.last_probs = probs
         next_logits = torch.from_numpy(z.astype(np.float32))
         new_state = DecodeState(tokens=new_window, cache=ms, length=state.length + 1)
-        return new_state, next_logits, self.step_flops()
+        flops = self._flop_breakdown(
+            did_update=did_update, n_fold=n_fold, n_active=n_active, n_laplace=n_laplace
+        )
+        return new_state, next_logits, flops
 
-    def step_flops(self) -> FlopBreakdown:
-        """Per-byte FLOPs, charged entirely through the non-matmul primitives.
+    def _flop_breakdown(
+        self, *, did_update: bool, n_fold: int, n_active: int, n_laplace: int
+    ) -> FlopBreakdown:
+        """Exact FLOPs for the branches a :meth:`step` actually executed — every
+        non-matmul op charged through ``pointwise``/``gather`` (charge == code, not
+        a conservative over-estimate).
 
-        Let ``K = max_order + 1`` predictors and ``V = vocab_size``. Per byte:
+        Let ``K = num_predictors`` and ``V = vocab_size``.
 
         Prediction (``forward``):
-          - ``K`` context lookups                              -> ``gather(K)``
-          - Laplace prob per model (sum+add+divide ≈ 3V)       -> ``3·K·V``
-          - stretch ``log p_k`` per model                      -> ``K·V``
+          - ``n_active`` context lookups                       -> ``gather(n_active)``
+          - Laplace prob (sum+add+divide ≈ 3V), only for the ``n_laplace`` active,
+            already-seen contexts                              -> ``3·V·n_laplace``
+          - stretch ``log p_k`` for every predictor           -> ``K·V``
           - mix ``z = Σ_k w_k·s_k`` (K·V mul + K·V add)        -> ``2·K·V``
           - softmax (max+sub+exp+sum+div ≈ 5V)                 -> ``5·V``
 
         Adaptation (``backward`` = the model's own online update):
-          - error ``probs − onehot`` (≈ V)                     -> ``V``
-          - gradient ``Σ_b err[b]·s_k[b]`` (K·V mul + K·V add) -> ``2·K·V``
-          - weight update ``w -= lr·grad`` (mul + sub)         -> ``2·K``
-          - fold: ``K`` count increments + ``K`` lookups       -> ``K`` + ``gather(K)``
+          - fold: ``n_fold`` count increments + ``n_fold`` lookups
+                                                               -> ``n_fold`` + ``gather(n_fold)``
+          - mixer update, only when a pending prediction exists (``did_update``):
+            one-hot subtract (1) + gradient matvec (2·K·V) + weight step (2·K).
         """
         k = self.num_predictors
         v = self.config.vocab_size
-        forward = pointwise_flops(6 * k * v + 5 * v) + gather_flops(k)
-        backward = pointwise_flops(2 * k * v + v + 3 * k) + gather_flops(k)
+        forward = pointwise_flops(3 * v * n_laplace + k * v + 2 * k * v + 5 * v)
+        forward += gather_flops(n_active)
+        backward_pointwise = n_fold
+        if did_update:
+            backward_pointwise += 1 + 2 * k * v + 2 * k
+        backward = pointwise_flops(backward_pointwise) + gather_flops(n_fold)
         return FlopBreakdown(forward=forward, backward=backward)
+
+    def _steady_step_flops(self) -> FlopBreakdown:
+        """Analytic *steady-state* per-byte cost: all K predictors active and
+        already-seen, mixer updating. The config-derived upper bound used by
+        :meth:`flops`/:meth:`decode_step_flops`; the measured prequential curve
+        uses :meth:`step`'s exact per-byte charge, not this estimate."""
+        k = self.num_predictors
+        return self._flop_breakdown(did_update=True, n_fold=k, n_active=k, n_laplace=k)
 
     def decode_step_flops(self, context_len: int) -> FlopBreakdown:
         """Forward-only (prediction) per-byte cost; independent of context length
-        (mixing is O(K·V) regardless of how many bytes have been seen)."""
-        return FlopBreakdown(forward=self.step_flops().forward, backward=0)
+        (mixing is O(K·V) regardless of how many bytes have been seen). Analytic
+        steady-state — see :meth:`_steady_step_flops`."""
+        return FlopBreakdown(forward=self._steady_step_flops().forward, backward=0)
 
     @classmethod
     def from_config(cls, config: dict[str, object]) -> "ContextMixing":

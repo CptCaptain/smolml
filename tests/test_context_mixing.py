@@ -11,7 +11,7 @@ import numpy as np
 import torch
 
 from smolml.data import load_sample, synthetic_text8
-from smolml.flops import gather_flops, pointwise_flops
+from smolml.flops import FlopBreakdown, gather_flops, pointwise_flops
 from smolml.models import build_model, list_models
 from smolml.models.context_mixing import (
     ContextMixing,
@@ -78,41 +78,90 @@ def test_one_sgd_step_lowers_loss_on_the_revealed_byte():
     assert p_after[target] > p_before[target]
 
 
-# --- honest non-matmul FLOP accounting ---------------------------------------
-def test_step_flops_hand_computed():
-    # K = max_order+1 = 2 predictors, V = 256.
+# --- honest non-matmul FLOP accounting (charge == code, exactly) -------------
+def test_step_charges_exactly_the_branches_executed():
+    # K = max_order+1 = 2, V = 256. Trace the exact branches step() runs.
+    #
+    # pos=0 (fresh: no pending prediction, empty window):
+    #   fold      -> only order-0 (no preceding bytes for order-1): n_fold = 1
+    #   predict   -> order-0 lookup hits (just folded), order-1 lookup misses:
+    #                n_active = 2, n_laplace = 1
+    #   forward  = pointwise(3V*1 + KV + 2KV + 5V) + gather(2)
+    #            = pointwise(768 + 512 + 1024 + 1280) + 2 = 3584 + 2 = 3586
+    #   backward = pointwise(n_fold=1) + gather(1)            (no mixer update) = 2
+    model = ContextMixing(ContextMixingConfig(max_order=1))
+    state = model.init_prequential_state()
+    state, _, f0 = model.step(state, 65, 0)  # byte 'A'
+    assert f0.forward == pointwise_flops(3 * 256 + 2 * 256 + 4 * 256 + 5 * 256) + gather_flops(2)
+    assert f0.forward == 3586
+    assert f0.backward == pointwise_flops(1) + gather_flops(1) == 2
+    assert f0.total == 3588
+
+    # pos=1 (byte 'B' != 'A'): pending prediction -> mixer update fires; both
+    #   orders fold (one preceding byte now); order-1 predict context unseen.
+    #   n_fold = 2, n_active = 2, n_laplace = 1, did_update = True.
+    #   forward  = 3586 (same shape as pos=0)
+    #   backward = pointwise(n_fold=2 + 1 + 2KV + 2K) + gather(2)
+    #            = pointwise(2 + 1 + 1024 + 4) + 2 = 1031 + 2 = 1033
+    state, _, f1 = model.step(state, 66, 1)
+    assert f1.forward == 3586
+    assert f1.backward == pointwise_flops(2 + 1 + 2 * 2 * 256 + 2 * 2) + gather_flops(2) == 1033
+    assert f1.total == 4619
+
+
+def test_per_byte_cost_is_dynamic_not_constant():
+    # The first byte has no pending prediction (no mixer update) and folds fewer
+    # orders, so it MUST cost strictly less than a later, fully-warmed byte. This
+    # is exactly the over-charge the constant per-byte charge would have hidden.
+    model = ContextMixing(ContextMixingConfig(max_order=2))
+    state = model.init_prequential_state()
+    state, _, f0 = model.step(state, 65, 0)
+    state, _, f1 = model.step(state, 66, 1)
+    state, _, f2 = model.step(state, 67, 2)
+    assert f0.total < f1.total < f2.total
+
+
+def test_steady_step_flops_hand_computed():
+    # The analytic steady-state estimate (all K active+seen, mixer updating):
     #   forward  = pointwise(6KV + 5V) + gather(K)
     #            = pointwise(6*2*256 + 5*256) + gather(2) = 4352 + 2 = 4354
-    #   backward = pointwise(2KV + V + 3K) + gather(K)
-    #            = pointwise(2*2*256 + 256 + 6) + gather(2) = 1286 + 2 = 1288
-    model = ContextMixing(ContextMixingConfig(max_order=1))
-    bd = model.step_flops()
+    #   backward = pointwise(K_fold + 1 + 2KV + 2K) + gather(K)
+    #            = pointwise(2 + 1 + 1024 + 4) + gather(2) = 1031 + 2 = 1033
+    bd = ContextMixing(ContextMixingConfig(max_order=1))._steady_step_flops()
     assert bd.forward == pointwise_flops(6 * 2 * 256 + 5 * 256) + gather_flops(2) == 4354
-    assert bd.backward == pointwise_flops(2 * 2 * 256 + 256 + 3 * 2) + gather_flops(2) == 1288
-    assert bd.total == 5642
+    assert bd.backward == pointwise_flops(2 + 1 + 2 * 2 * 256 + 2 * 2) + gather_flops(2) == 1033
+    assert bd.total == 5387
 
 
-def test_flops_are_non_zero_and_non_matmul():
-    # The dominant compute is charged: both prediction and adaptation cost FLOPs,
-    # and they scale with the number of predictors (pointwise/gather work).
-    one = ContextMixing(ContextMixingConfig(max_order=0)).step_flops()
-    four = ContextMixing(ContextMixingConfig(max_order=3)).step_flops()
+def test_flops_are_non_zero_and_grow_with_predictors():
+    # Both prediction and adaptation cost real (pointwise/gather) FLOPs, and more
+    # predictors mean more charged work.
+    one = ContextMixing(ContextMixingConfig(max_order=0))._steady_step_flops()
+    four = ContextMixing(ContextMixingConfig(max_order=3))._steady_step_flops()
     assert one.forward > 0 and one.backward > 0
-    assert four.total > one.total  # more predictors -> more charged work
+    assert four.total > one.total
 
 
-def test_flops_seq_len_is_per_byte_times_length():
+def test_flops_seq_len_is_steady_per_byte_times_length():
     model = ContextMixing(ContextMixingConfig(max_order=2))
-    assert model.flops(10) == model.step_flops().scale(10)
+    assert model.flops(10) == model._steady_step_flops().scale(10)
 
 
-def test_prequential_total_flops_is_exact_per_byte_sum():
-    # The loop charges step() for pos in 0..n-2, i.e. (n-1) constant steps.
-    model = ContextMixing(ContextMixingConfig(max_order=2))
-    stream = synthetic_text8(2000, seed=0).prequential_carve(eval_bytes=100)[1]
-    result = prequential_bpb(model, stream, device=CPU)
-    assert result.n_bytes == 100
-    assert result.eval_flops == model.step_flops().total * (100 - 1)
+def test_prequential_total_equals_exact_sum_of_step_flops():
+    # The loop must accumulate EXACTLY what each step() returns — no hidden charge,
+    # no constant approximation. Replay step() independently and sum the per-byte
+    # breakdowns; the prequential total must match to the FLOP.
+    cfg = ContextMixingConfig(max_order=2)
+    stream = synthetic_text8(2000, seed=0).prequential_carve(eval_bytes=60)[1]
+    state = ContextMixing(cfg).init_prequential_state()
+    replay = ContextMixing(cfg)
+    total = FlopBreakdown()
+    for pos in range(len(stream) - 1):
+        state, _, fl = replay.step(state, int(stream[pos]), pos)
+        total += fl
+    result = prequential_bpb(ContextMixing(cfg), stream, device=CPU)
+    assert result.n_bytes == 60
+    assert result.eval_flops == total.total
 
 
 # --- online learning ---------------------------------------------------------
