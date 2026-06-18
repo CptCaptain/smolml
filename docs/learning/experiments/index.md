@@ -35,14 +35,15 @@ on top. Each entry should link the concept pages it touches and embed/link the b
   `transformer` (d=32, L=2, ctx=64) on the same stream. Seed 0, CPU. All per-byte compute
   charged via the non-matmul `pointwise`/`gather` primitives.
 - **Result:** bpb falls as orders (and per-byte FLOPs) rise; the untrained transformer is far
-  worse at ~450× the compute.
+  worse at ~500× the compute. (FLOPs are charged exactly per byte for the branches each step
+  runs — see below — so these totals are executed work, not a constant estimate.)
 
   | run | bpb | total FLOPs |
   | --- | ---: | ---: |
-  | context_mixing order 0..3 (reference) | **4.1733** | 7.79e6 |
-  | context_mixing order 0..2 (reference) | 4.2284 | 6.15e6 |
-  | context_mixing order 0..1 (reference) | 4.3922 | 4.51e6 |
-  | context_mixing order 0..0 (reference) | 4.7066 | 2.87e6 |
+  | context_mixing order 0..3 (reference) | **4.1733** | 7.02e6 |
+  | context_mixing order 0..2 (reference) | 4.2284 | 5.74e6 |
+  | context_mixing order 0..1 (reference) | 4.3922 | 4.28e6 |
+  | context_mixing order 0..0 (reference) | 4.7066 | 2.66e6 |
   | transformer (untrained, contrast) | 7.9786 | 3.48e9 |
 
   ![Reference bpb-vs-FLOP curve: context mixing (reference, not a candidate) vs an untrained
@@ -52,8 +53,10 @@ on top. Each entry should link the concept pages it touches and embed/link the b
   sweep; the orange point is the untrained transformer contrast. Lower-left is better._
 - **Verdict:** reference ceiling established. Single-pass online mixing reaches ≈4.17 bpb for
   <1e7 FLOPs; the untrained transformer needs 3.5e9 FLOPs to manage ≈8.0 bpb.
-- **What we learned:** (1) The non-matmul FLOP primitives matter — the reference's ~9.7k
-  FLOPs/byte is real, charged work, not free. (2) On this *real-English* corpus higher orders
+- **What we learned:** (1) The non-matmul FLOP primitives matter — the reference's per-byte cost
+  (order-3 averages ~8.8k FLOPs/byte, steady-state ~9.5k) is real, charged work, not free, and is
+  charged *exactly* for the branches each `step` runs (no constant over-estimate). (2) On this
+  *real-English* corpus higher orders
   genuinely help (bigram/trigram structure); on the synthetic `text8` clone, whose letters are
   i.i.d. within words, orders >0 add ~nothing — an honest reminder that the curve's shape is a
   property of the corpus, not just the model. (3) A trained transformer would beat this bpb, but

@@ -69,17 +69,23 @@ the logistic mix/update**, all `O(K·V)` per byte (`K` = number of specialists).
 [FLOP counter](loss-per-flop-and-scaling-laws.md) omits elementwise work for the transformer
 *only because matmuls dominate there*; that omission is **conditional**. So every per-byte
 operation here is charged through the non-matmul primitives `pointwise_flops` / `gather_flops`.
-Per byte (derived in `ContextMixing.step_flops`):
+Each step charges **exactly the branches it actually runs** (`ContextMixing._flop_breakdown`) —
+not a constant per-byte estimate, which would over-charge early bytes and abstaining specialists.
+With `K` predictors and `V = 256`, where `n_active` = specialists with available context this
+byte, `n_seen` = those whose exact context was seen before, `n_fold` = orders folded:
 
 | phase | work | FLOPs |
 | --- | --- | --- |
-| predict | `K` context lookups | `gather(K)` |
-| predict | Laplace prob (`≈3V`) + stretch (`V`) + mix (`2KV`) + softmax (`5V`) | `pointwise(6KV + 5V)` |
-| adapt | error (`V`) + gradient (`2KV`) + weight step (`2K`) + `K` count folds | `pointwise(2KV + V + 3K)` + `gather(K)` |
+| predict | one lookup per available specialist | `gather(n_active)` |
+| predict | Laplace prob (`≈3V`) only for the `n_seen` seen contexts | `pointwise(3V·n_seen)` |
+| predict | stretch `log p_k` (every predictor) + mix (`2KV`) + softmax (`5V`) | `pointwise(KV + 2KV + 5V)` |
+| adapt | `n_fold` count increments + their lookups | `pointwise(n_fold)` + `gather(n_fold)` |
+| adapt | mixer update *only if a prediction is pending*: one-hot subtract (`1`) + gradient (`2KV`) + weight step (`2K`) | `pointwise(1 + 2KV + 2K)` |
 
-For `K = 4`, `V = 256` that is ≈ 9.7k FLOPs/byte — small, but **counted**. Leaving it uncharged
-would let the reference look artificially free; the whole point of the primitives is that it does
-not.
+So byte 0 (no pending prediction, empty context) is cheap; a fully-warmed byte costs more. In
+steady state (`K = 4`, all specialists active and seen) that is ≈ 9.5k FLOPs/byte — small, but
+**counted to the FLOP**. Leaving it uncharged would let the reference look artificially free; the
+whole point of the primitives is that it does not.
 
 ## Worked example
 
