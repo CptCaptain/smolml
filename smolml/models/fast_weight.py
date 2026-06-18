@@ -1,16 +1,21 @@
 """Fast-weight associative memory over a frozen slow transformer core (Task A.1).
 
-The first Source-(iv) candidate. The bet: rote memorization is expensive for
-gradient descent (many steps to push a literal pattern into weights) but nearly
-free for a **fast-weight associative memory** — a single gradient-free outer-product
-write per item. So pair a *slow* gradient-trained core (which learns the
-regularities and generalizes) with a *fast* associative store (which soaks up the
-rote bits the instant it sees them). If memorization moves from "expensive
-gradient steps" to "one cheap write," the gradient FLOPs all buy generalization →
-more loss-reduction per FLOP. See ``docs/learning/concepts/fast-weight-memory.md``.
+The first Source-(iv) candidate. **The bet:** rote memorization is expensive for
+gradient descent (many steps to push a literal pattern into weights) but nearly free
+for a **fast-weight associative memory** — a single gradient-free outer-product write
+per item; pairing a *slow* gradient-trained core with the *fast* store should then
+spend the gradient budget on generalization and buy more loss-reduction per FLOP.
+**Measured verdict (see the experiment log): the bet is NOT borne out on this data.**
+The eval streams carry no literal repetition to monetize, recall behaves identically
+with a trained or untrained core (no division of labor), and a *free* online unigram
+dominates both models at every budget where the memory helps; the memory acts as a
+weak always-on frequency-like predictor that helps an under-trained core and *hurts* a
+good one (confirmed on a real enwik8 carve). The mechanism below is sound and honestly
+metered — the Source-(iv) claim simply is not supported here. See
+``docs/learning/concepts/fast-weight-memory.md`` and the experiment log.
 
-Division of labor
------------------
+Architecture (slow core + fast memory)
+--------------------------------------
 - **Slow core** — the existing :class:`~smolml.models.transformer.Transformer`,
   pretrained by the default backprop ``train_step`` on the prior corpus and
   **frozen** at eval. ``forward``/``flops`` delegate to it, so amortized
@@ -26,7 +31,8 @@ Addressing (design decision: soft recall on *centered* hidden-state keys)
 -------------------------------------------------------------------------
 Soft / linear associative recall keyed on the frozen core's hidden state, not exact
 byte-match — so an exact context repeat recalls strongly while a near-repeat recalls
-gracefully (the division of labor: the core generalizes, the memory does rote).
+gracefully (the *intent* is core-generalizes / memory-does-rote, though on
+non-repetitive data the memory does not measurably specialize; see the experiment log).
 **But raw transformer hidden states are severely anisotropic** — measured adjacent
 cosine ~1.0, i.e. every context maps to nearly the same direction, which gives an
 associative store no addressing discrimination and lets crosstalk dominate. The fix
@@ -281,8 +287,12 @@ class FastWeightMemory(LanguageModel):
         """Confidence-gated probability mixture of the core and recall distributions.
 
         ``log((1-a)*softmax(core) + a*softmax(beta*recall))`` with the mixture weight
-        ``a = memory_alpha * max(softmax(beta*recall))`` gated by recall confidence,
-        so the bounded mixture can never blow up a confident core."""
+        ``a = memory_alpha * max(softmax(beta*recall))`` gated by recall confidence.
+        A convex mix keeps ``p`` a valid distribution but does NOT bound the loss: a
+        confidently-wrong recall can still starve the truth. The worst case at the
+        default ``alpha=0.6`` is ``+log2(1/0.4) = +1.32`` bits/byte over the pure core
+        (and e.g. ``alpha=1.0, beta=4`` drives a 6.0-bpb core to 9.2 bpb); the
+        confidence gate makes that worst case rare, it does not forbid it."""
         cfg = self.config
         p_core = torch.softmax(core_logits, dim=-1)
         p_mem = torch.softmax(cfg.memory_beta * recall, dim=-1)
