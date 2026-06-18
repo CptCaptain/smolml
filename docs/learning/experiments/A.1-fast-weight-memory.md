@@ -107,9 +107,9 @@ with the core fixed per budget:
 
 | budget | Δ (mean ± sd) | SE | wins (fw<tr) | |mean|/SE |
 | --- | ---: | ---: | :---: | ---: |
-| 0 | −0.540 ± 0.083 | 0.017 | 24/24 | 31.8 |
-| 10¹⁰ | −0.081 ± 0.040 | 0.0082 | 22/24 | 9.8 |
-| 4×10¹⁰ | +0.242 ± 0.039 | 0.0081 | 0/24 | 30.0 |
+| 0 | −0.5397 ± 0.0830 | 0.0169 | 24/24 | ~32 |
+| 10¹⁰ | −0.0806 ± 0.0404 | 0.0082 | 22/24 | ~9.8 |
+| 4×10¹⁰ | +0.2416 ± 0.0394 | 0.0081 | 0/24 | ~30 |
 
 Both the low-budget win and the high-budget loss are **~10–30 SE from zero and
 reproduce across streams** — a small but robust effect. (This supersedes the earlier
@@ -127,8 +127,8 @@ tail = 5.17 bpb.
 
 | budget | transformer | fast-weight | Δ |
 | --- | ---: | ---: | ---: |
-| 0 | 7.9996 | 7.0322 | −0.97 (fw) |
-| 10¹⁰ | 6.3864 | 6.1164 | −0.27 (fw) |
+| 0 | 7.9996 | 7.0321 | −0.97 (fw) |
+| 10¹⁰ | 6.3864 | 6.1150 | −0.27 (fw) |
 | 4×10¹⁰ | **4.9137** | 5.5014 | **+0.59 (tr)** |
 
 The same pattern transfers — and the high-budget loss is **worse on real data**: at
@@ -192,6 +192,56 @@ for b in 0 2e9 1e10 4e10; do
 done
 uv run smolml leaderboard --runs-dir runs
 ```
+
+**Variance table + enwik8 control (exact, bit-reproducible).** Live models, public
+API only; a fixed pretrained core is shared by the hybrid and the bare transformer
+(`fw.core`), so the delta isolates the memory. The 24 clone streams are
+`synthetic_text8(512, seed=1000 + i)` for `i in range(24)` (seeds **1000..1023**); the
+enwik8 carve is the final 2048 bytes of `prepare_enwik8(n_bytes=1_000_000)`. The
+repeat-density sweep tiles `synthetic_text8(2000, seed=7).data[500:1012]` at periods
+{512, 256, 128, 96, 64, 32} through the same 4×10¹⁰ core.
+
+```python
+import math, numpy as np, torch
+from smolml.data import synthetic_text8
+from smolml.data.corpus import prepare_enwik8
+from smolml.models import build_model
+from smolml.prequential import prequential_bpb, pretrain
+
+CPU = torch.device("cpu")
+PT = dict(batch_size=16, seq_len=128, lr=3e-3, weight_decay=0.1,
+          betas=(0.9, 0.95), grad_clip=1.0, seed=0, device=CPU)
+
+def fixed_core(cfg, prior, budget):
+    torch.manual_seed(0)
+    fw = build_model("fast_weight", cfg)
+    if budget > 0:
+        pretrain(fw, prior, flop_budget=budget, **PT)
+    return fw.eval()
+
+# --- 24-stream paired variance (clone), seeds 1000..1023, fixed core ---
+CFG = {"d_model": 48, "n_layers": 3, "n_heads": 4, "max_seq_len": 512}
+prior, _ = synthetic_text8(200000, seed=0).prequential_carve(eval_bytes=512)
+streams = [synthetic_text8(512, seed=1000 + i).data for i in range(24)]
+for budget in (0.0, 1e10, 4e10):
+    fw = fixed_core(CFG, prior, budget)
+    d = np.array([prequential_bpb(fw, s, device=CPU).bpb
+                  - prequential_bpb(fw.core, s, device=CPU).bpb for s in streams])
+    print(budget, round(d.mean(), 4), round(d.std(ddof=1), 4),
+          round(d.std(ddof=1) / math.sqrt(24), 4), int((d < 0).sum()))
+
+# --- real enwik8 control: 1 MB prior, final 2 KB tail (downloads ~36 MB once) ---
+ECFG = {"d_model": 48, "n_layers": 3, "n_heads": 4, "max_seq_len": 2048}
+ep, ev = prepare_enwik8(n_bytes=1_000_000).prequential_carve(eval_bytes=2048)
+for budget in (0.0, 1e10, 4e10):
+    fw = fixed_core(ECFG, ep, budget)
+    print(budget, round(prequential_bpb(fw.core, ev, device=CPU).bpb, 4),
+          round(prequential_bpb(fw, ev, device=CPU).bpb, 4))
+```
+
+Prints (seed 0, CPU, torch float32): variance `(−0.5397, 0.0830, 0.0169, 24)`,
+`(−0.0806, 0.0404, 0.0082, 22)`, `(+0.2416, 0.0394, 0.0081, 0)`; enwik8
+`(7.9996, 7.0321)`, `(6.3864, 6.1150)`, `(4.9137, 5.5014)`.
 
 - The free online unigram (5.33 bpb): predict ∝ Laplace counts, then increment, scored
   prequentially on the same 512-byte eval — see
