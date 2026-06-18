@@ -81,7 +81,7 @@ def test_decay_forgets_old_writes():
 def test_step_flops_equal_core_plus_memory():
     model = _model(memory_decay=0.999)
     d, v = model.config.d_model, model.config.vocab_size
-    read = matmul_flops(1, v, d) + pointwise_flops(d, 3) + pointwise_flops(v, 2)
+    read = matmul_flops(1, v, d) + pointwise_flops(d, 6) + pointwise_flops(v, 8)
     write = matmul_flops(d, v, 1) + pointwise_flops(d * v)
 
     state = model.init_prequential_state()
@@ -106,19 +106,19 @@ def test_disabling_decay_drops_the_decay_charge():
 
 # --- the memory adds NOTHING but a counted read when its gate is zero ----------
 def test_zero_gate_matches_the_frozen_core_exactly():
-    # gamma=0 => recall never touches the logits, so the candidate's predictions
-    # must be bit-identical to the bare transformer with the SAME pretrained core;
+    # alpha=0 => the recall mixture weight is zero, so the candidate's prediction
+    # distribution must equal the bare transformer's with the SAME pretrained core;
     # the ONLY extra FLOPs are the (still-charged) memory read/write. This pins the
     # decode path to the baseline and proves the memory is a pure, honest add-on.
     stream = np.frombuffer(b"the quick brown fox. " * 6, dtype=np.uint8)
     torch.manual_seed(0)
     transformer = build_model("transformer", TINY).eval()
     torch.manual_seed(0)
-    fast = _model(memory_gamma=0.0)
+    fast = _model(memory_alpha=0.0)
     r_tr = prequential_bpb(transformer, stream, device=CPU, collect_logits=True)
     r_fw = prequential_bpb(fast, stream, device=CPU, collect_logits=True)
     for a, b in zip(r_tr.predicted_logits, r_fw.predicted_logits, strict=True):
-        assert torch.allclose(a, b, atol=1e-6)
+        assert torch.allclose(torch.softmax(a, -1), torch.softmax(b, -1), atol=1e-6)
     # core forward identical; fast-weight pays exactly the memory read/write on top.
     assert r_fw.flops.forward > r_tr.flops.forward
     assert r_tr.flops.backward == 0 and r_fw.flops.backward > 0
@@ -132,11 +132,11 @@ def test_sliding_regime_zero_gate_still_matches_core():
     torch.manual_seed(0)
     transformer = build_model("transformer", cfg).eval()
     torch.manual_seed(0)
-    fast = build_model("fast_weight", {**cfg, "memory_gamma": 0.0}).eval()
+    fast = build_model("fast_weight", {**cfg, "memory_alpha": 0.0}).eval()
     r_tr = prequential_bpb(transformer, stream, device=CPU, collect_logits=True)
     r_fw = prequential_bpb(fast, stream, device=CPU, collect_logits=True)
     for a, b in zip(r_tr.predicted_logits, r_fw.predicted_logits, strict=True):
-        assert torch.allclose(a, b, atol=1e-5)
+        assert torch.allclose(torch.softmax(a, -1), torch.softmax(b, -1), atol=1e-5)
 
 
 # --- behavioral: the memory measurably lowers bpb on repeated substrings ------
@@ -206,7 +206,13 @@ def test_prequential_run_total_is_pretrain_plus_eval(tmp_path):
 
 def test_config_resolves_d_ff_and_validates_memory():
     assert FastWeightConfig(d_model=32).d_ff == 128
-    for bad in ({"memory_decay": 0.0}, {"memory_decay": 1.5}, {"memory_gamma": -1.0}):
+    for bad in (
+        {"memory_decay": 0.0},
+        {"memory_decay": 1.5},
+        {"memory_alpha": 1.5},
+        {"memory_beta": -1.0},
+        {"memory_center_ema": 0.0},
+    ):
         try:
             FastWeightConfig(**bad)
         except ValueError:
