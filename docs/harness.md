@@ -264,41 +264,57 @@ The real metric (ADR 0004): predict each byte **before** it is revealed, pay
 budget (pretraining + inference + adaptation). The amortized path (§1–§4) is
 unchanged and still works.
 
-### The decode/adapt seam (model interface extension)
+### The per-byte seam — ONE honest channel
 
-`LanguageModel` gains five methods, all with working defaults so existing models
-keep running; a model overrides them for efficiency or to add online adaptation:
+`LanguageModel` exposes a single per-byte method (plus state init), so there is no
+separate predict method that could do real work charged 0 FLOPs:
 
 ```python
-init_prequential_state(self) -> DecodeState        # fresh per-stream state (byte 0 = uniform prior)
-predict_logits(self, state) -> Tensor              # logits for the NEXT byte — past observations only
-observe(self, state, token, pos) -> (state, FlopBreakdown)   # reveal a byte; return new state + decode FLOPs
-adapt(self, state, optimizer, *, grad_clip) -> (state, FlopBreakdown)  # optional online update (default: no-op, 0)
-decode_step_flops(self, context_len) -> FlopBreakdown   # incremental per-byte prediction cost (forward-only)
-adapt_step_flops(self, context_len) -> FlopBreakdown    # one online-update cost (0 for a frozen model)
+context_window(self) -> int | None              # bytes conditioned on per prediction (None = unbounded)
+init_prequential_state(self) -> DecodeState     # fresh per-stream state
+step(self, state, revealed_byte, pos) -> (state, next_logits, FlopBreakdown)
+    # fold the revealed byte, run ANY online adaptation, predict the NEXT byte,
+    # and return EVERY FLOP spent this step (observe + adapt + predict)
+decode_step_flops(self, context_len) -> FlopBreakdown   # analytic forward-only decode cost (budgeting/tests)
 ```
 
-The transformer overrides `observe`/`init_prequential_state`/`decode_step_flops`
-with a **KV cache**: decoding one byte costs `O(d²)` projections + `O(context·d)`
-attention (1 query vs `context` cached keys), forward-only. A test asserts the
-cached decode is bit-identical to a full `forward` over the same prefix. The
-frozen transformer baseline does not adapt, so its `adapt_step_flops` is 0 (the
-honest value); a future fast-weight candidate overrides `adapt` and spends real
-adaptation FLOPs on the same budget.
+`step` has a working default (bounded windowed **recompute** — replay the last
+`context_window` bytes through `forward`), correct for any model. The transformer
+overrides it with a **KV cache** for speed. Because the next distribution and its
+FLOPs are *returned together* by `step`, a fast-weight read (A.1) or a
+context-mixer's mixing (0.3) at prediction time is **structurally counted** — it
+cannot be hidden in a 0-FLOP getter. Whether a model adapts is the model's own
+business (the loop just measures); a frozen model's `step` does no adaptation.
+
+### Bounded sliding-window decode
+
+The transformer's `step` grows an exact KV cache while the context is below
+`context_window` (O(context·d) per byte, bit-identical to a full forward — tested).
+Once the window is full it switches to a **bounded windowed recompute** over the
+last `context_window` bytes (a multi-layer KV cache cannot slide without staleness,
+so recompute keeps it exact). This means: (a) a stream longer than the context runs
+in **bounded memory** (no unbounded cache, no per-byte `cat`); (b) every
+post-warmup byte is conditioned on the **same length**; (c) a parity test asserts
+the sliding step equals an independent forward over its window. The recompute is
+O(W²) per byte, so the full 5 MB enwik8 carve is *runnable but GPU-scale/opt-in* —
+not a quick CLI run.
 
 ### The loop (leakage is structural)
 
-`smolml/prequential.py::prequential_bpb` does, per byte: `predict_logits` (sees
-only already-`observe`-d bytes) → score the true byte → `observe` it (reveal) →
-optional `adapt`. The model never receives byte `t` while predicting it; the
-leakage test perturbs the stream at/after `t` and asserts the prediction at `t`
-is bit-identical. Decode and adapt FLOPs are accumulated exactly as the model
-reports them — the budget cannot be gamed by hiding compute at eval.
+`smolml/prequential.py::prequential_bpb` does, per byte: score the model's current
+next-byte distribution against the true byte, then `step(state, true_byte, pos)`
+folds it and returns the distribution for the *next* (not-yet-seen) byte. Byte 0
+has no context, so it is scored against a **uniform prior** (8 bits, zero model
+FLOPs). The model never receives byte `t` while predicting it; the leakage test
+perturbs the stream at/after `t` and asserts the prediction at `t` is
+bit-identical. All per-byte FLOPs are accumulated exactly as `step` reports them.
 
-`prequential_run` orchestrates a baseline: pretrain on the prior corpus to a FLOP
-ceiling (`pretrain`), then frozen (or adapting) prequential eval; total FLOPs =
-pretrain + Σ decode (+ Σ adapt). It writes a `protocol="prequential"` JSONL whose
-step lines trace cumulative bpb vs cumulative total FLOPs.
+`prequential_run` orchestrates the baseline: pretrain on the prior corpus to a
+FLOP **ceiling** (`pretrain`), then prequential eval. **Budget semantics:** only
+the pretrain budget is an enforced ceiling; the eval runs the whole stream and
+`total = pretrain + Σ step` is *reported*, not capped. It writes a
+`protocol="prequential"` JSONL whose step lines trace cumulative bpb vs cumulative
+total FLOPs.
 
 ### Data carve (ADR 0004)
 
@@ -309,10 +325,18 @@ bytes. Full enwik8 uses `ENWIK8_EVAL_BYTES` (5 MB) and is opt-in/network-bound;
 tests and the smoke run use a tiny `eval_bytes` over the offline `synthetic_text8`
 clone, fully offline.
 
-**Limitation (documented):** the transformer's KV-cache decode uses absolute RoPE
-with a growing cache, so the eval stream must fit the model context
-(`len(eval_stream) <= max_seq_len`); sliding-window decode for streams longer than
-the context is future work. Tiny offline streams fit comfortably.
+### Seam constraints for candidates (A.1 / 0.3)
+
+- **No off-channel compute.** Anything a model computes to make a scored
+  prediction MUST happen inside `step` so its FLOPs are returned. `context_window`
+  bounds memory; pick it deliberately.
+- **Weight-mutating adaptation invalidates a KV cache.** An `adapt` that changes
+  the weights producing cached keys must rebuild/invalidate the cache, or it
+  silently drifts from a true forward. A fast-weight candidate with a **frozen
+  backbone + side memory** (A.1) is safe; backbone test-time fine-tuning is not.
+- **Prior→eval state hand-off is deferred.** 0.2 supports gradient pretraining on
+  the prior only; carrying online/adaptation *state* from the prior corpus into
+  the eval stream is deferred until a stateful candidate needs it.
 
 ## Caveats (known gaps; do not over-read small deltas)
 
