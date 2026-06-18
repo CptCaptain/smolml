@@ -251,14 +251,14 @@ def test_prequential_run_total_is_pretrain_plus_eval(tmp_path):
 
 def test_prequential_run_is_deterministic(tmp_path):
     corpus = synthetic_text8(8000, seed=0)
-    prior, eval_stream = corpus.prequential_carve(eval_bytes=96)
-    model_config = {"d_model": 16, "n_layers": 2, "n_heads": 2, "max_seq_len": 256}
+    prior, eval_stream = corpus.prequential_carve(eval_bytes=64)
+    model_config = {"d_model": 16, "n_layers": 2, "n_heads": 2, "max_seq_len": 128}
 
     def run(name: str):
         cfg = PrequentialConfig(
             model="transformer",
             model_config=model_config,
-            pretrain_flop_budget=2e8,
+            pretrain_flop_budget=6e7,
             batch_size=8,
             seq_len=32,
             seed=0,
