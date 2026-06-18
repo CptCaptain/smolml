@@ -1,9 +1,9 @@
 """Fast-weight associative-memory candidate (Task A.1).
 
-Protects the three things that make this candidate trustworthy: the memory
-write/read does what it claims, every memory FLOP flows through ``step``'s honest
-breakdown (charge == reality), and the memory measurably *lowers* prequential bpb
-on a memorization-friendly stream while its adaptation compute is counted.
+Protects what makes this candidate trustworthy: the memory write/read does what it
+claims, every memory FLOP flows through ``step``'s honest breakdown (charge ==
+reality), and the headline low-budget win over the transformer is real and stable --
+while being honest that a *free* online unigram dominates both models in that regime.
 """
 
 import math
@@ -27,6 +27,16 @@ def _model(**overrides) -> FastWeightMemory:
     model = build_model("fast_weight", cfg)
     model.eval()
     return model
+
+
+def _online_unigram_bpb(stream: np.ndarray) -> float:
+    """A free predict-then-count adaptive unigram (~1e5 FLOPs), the Pareto baseline."""
+    counts = np.ones(VOCAB_SIZE)
+    bits = 0.0
+    for byte in (int(b) for b in stream):
+        bits += -math.log2(counts[byte] / counts.sum())
+        counts[byte] += 1.0
+    return bits / len(stream)
 
 
 # --- memory write / read correctness -----------------------------------------
@@ -218,3 +228,26 @@ def test_config_resolves_d_ff_and_validates_memory():
         except ValueError:
             continue
         raise AssertionError(f"expected ValueError for {bad}")
+
+
+# --- headline: the low-budget win is real, stable, and Pareto-hollow ----------
+def test_low_budget_win_is_real_and_pareto_hollow():
+    # At budget 0 (untrained, equal-total-FLOP) the hybrid beats its identical
+    # transformer core on EVERY i.i.d. stream (a real, stable effect, not noise) --
+    # but a free online unigram dominates BOTH, so the win is Pareto-hollow. Testing
+    # both halves keeps the headline from ever being oversold.
+    cfg = {"d_model": 16, "n_layers": 2, "n_heads": 2, "max_seq_len": 256}
+    deltas = []
+    for seed in range(5):
+        stream = synthetic_text8(256, seed=3000 + seed).data
+        torch.manual_seed(0)
+        transformer = build_model("transformer", cfg).eval()
+        torch.manual_seed(0)
+        hybrid = build_model("fast_weight", cfg).eval()
+        tr = prequential_bpb(transformer, stream, device=CPU).bpb
+        fw = prequential_bpb(hybrid, stream, device=CPU).bpb
+        uni = _online_unigram_bpb(stream)
+        assert fw < tr  # the equal-total-FLOP win, on every stream (stability)
+        assert uni < fw and uni < tr  # ...but the free baseline dominates both
+        deltas.append(fw - tr)
+    assert np.mean(deltas) < -0.2  # robust margin (measured ~-0.54)
