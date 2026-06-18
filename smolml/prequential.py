@@ -5,11 +5,13 @@ bits, then *may* adapt on the revealed byte. Cumulative bits / bytes = bpb. Ever
 FLOP is counted — prediction (decode) and any adaptation — so a model that learns
 at test time pays for it in the same budget.
 
-**Leakage is structural, not checked at runtime.** Each iteration calls
-``predict_logits`` (which sees only already-``observe``-d bytes) and scores the
-true byte *before* the next ``observe`` reveals it. The model never receives byte
-``t`` while predicting byte ``t``. ``test_prequential.py`` proves it: perturbing
-the stream at/after position ``t`` leaves the prediction at ``t`` bit-identical.
+**Leakage is structural, not checked at runtime.** Per byte the loop scores the
+model's current next-byte distribution, then calls ``model.step(state, true_byte,
+pos)`` — which folds the revealed byte, runs any adaptation, and returns the
+distribution for the *next* (not-yet-seen) byte plus all FLOPs spent. Byte 0 has
+no context, so it is scored against a uniform prior. The model never receives byte
+``t`` while predicting it. ``test_prequential.py`` proves it: perturbing the stream
+at/after position ``t`` leaves the prediction at ``t`` bit-identical.
 """
 
 import json
