@@ -17,5 +17,47 @@ on top. Each entry should link the concept pages it touches and embed/link the b
 
 ## Entries
 
-_None yet. Phase 0 (the measuring spine) is being built; the first entry will be the transformer
-baseline curve, followed by the Phase A fast-weight-memory candidate._
+## 2026-06-18 — Context-mixing reference ceiling  [status: done]
+
+- **Concepts:** [Online context mixing](../concepts/context-mixing.md),
+  [Prequential evaluation](../concepts/prequential-evaluation.md),
+  [Source-(iv) advantage](../concepts/source-iv-advantage.md),
+  [Compression = prediction](../concepts/compression-equals-prediction.md)
+- **This is a reference, not a candidate.** It does not "enter" the search; it marks the
+  bpb-per-FLOP ceiling that single-pass online learning reaches, so a candidate has a target to
+  approach. "Beat-baseline / lost" does not apply to a yardstick.
+- **Hypothesis:** a handful of order-k byte models mixed by online-learned logistic weights
+  (zero pretraining) should reach far lower bpb than an *untrained* transformer at a tiny
+  fraction of the FLOPs — the Hutter-Prize lineage, reproduced at toy scale.
+- **Setup:** `model=context_mixing`, prequential / total-FLOP protocol, **zero pretrain**
+  (transductive). Corpus: bundled English `sample` (offline), final 800 bytes as the eval
+  stream. Sweep `max_order ∈ {0,1,2,3}`; contrast = one untrained (`pretrain_budget=0`)
+  `transformer` (d=32, L=2, ctx=64) on the same stream. Seed 0, CPU. All per-byte compute
+  charged via the non-matmul `pointwise`/`gather` primitives.
+- **Result:** bpb falls as orders (and per-byte FLOPs) rise; the untrained transformer is far
+  worse at ~450× the compute.
+
+  | run | bpb | total FLOPs |
+  | --- | ---: | ---: |
+  | context_mixing order 0..3 (reference) | **4.1733** | 7.79e6 |
+  | context_mixing order 0..2 (reference) | 4.2284 | 6.15e6 |
+  | context_mixing order 0..1 (reference) | 4.3922 | 4.51e6 |
+  | context_mixing order 0..0 (reference) | 4.7066 | 2.87e6 |
+  | transformer (untrained, contrast) | 7.9786 | 3.48e9 |
+
+  ![Reference bpb-vs-FLOP curve: context mixing (reference, not a candidate) vs an untrained
+  transformer](context-mixing-reference.png)
+
+  _Curve: the blue dashed line is the **context-mixing reference (not a candidate)** order
+  sweep; the orange point is the untrained transformer contrast. Lower-left is better._
+- **Verdict:** reference ceiling established. Single-pass online mixing reaches ≈4.17 bpb for
+  <1e7 FLOPs; the untrained transformer needs 3.5e9 FLOPs to manage ≈8.0 bpb.
+- **What we learned:** (1) The non-matmul FLOP primitives matter — the reference's ~9.7k
+  FLOPs/byte is real, charged work, not free. (2) On this *real-English* corpus higher orders
+  genuinely help (bigram/trigram structure); on the synthetic `text8` clone, whose letters are
+  i.i.d. within words, orders >0 add ~nothing — an honest reminder that the curve's shape is a
+  property of the corpus, not just the model. (3) A trained transformer would beat this bpb, but
+  only by spending orders of magnitude more pretraining FLOPs — which is exactly the per-FLOP
+  gap a Source-(iv) candidate is meant to close.
+
+_Pending: the transformer baseline curve and the Phase A fast-weight-memory candidate._

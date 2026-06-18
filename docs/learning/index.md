@@ -19,7 +19,11 @@ graph TD
     GOAL --> S4[Source-iv advantage]
     S4 --> FWM[Fast-weight associative memory]
     PREQ --> FWM
+    S4 --> CMIX[Online context mixing]
+    PREQ --> CMIX
+    CP --> CMIX
     FWM -.->|Phase A experiment| EXP[Experiment log]
+    CMIX -.->|reference ceiling| EXP
     PREQ -.-> EXP
 ```
 
@@ -35,6 +39,8 @@ graph TD
   non-backprop idea is allowed to claim here.
 - [Fast-weight associative memory](concepts/fast-weight-memory.md) — the Phase A maiden
   candidate: make memorization ~free.
+- [Online context mixing](concepts/context-mixing.md) — the PAQ/cmix reference ceiling (not a
+  candidate): cheap order-k models + online logistic mixing, the bpb-per-FLOP target to approach.
 
 ## Experiments
 
