@@ -68,9 +68,9 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 
 ### Data modules
 
-- `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`) + datasets `firstFinding`,
+- `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`, `warm`) + datasets `firstFinding`,
   `contextMixingReference`, `prequentialBaseline`, `amortizedBaseline`, `freeUnigram`,
-  `surpriseGatedPc` (B.1), constants. Provenance-commented.
+  `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2), constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
 
 ## Style & convention decisions
@@ -82,12 +82,16 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
   predictive-coding refinement = rose (`--c-pc`; B.1 — the harness plots `pc_refine` in tab:orange,
   but orange is reserved here for fast-weight, so PC got its own token + chart/map/swatch color and
   never reads as the memory).
+  warm_mix = warm **vermilion** (`--c-warm` #e0654d; B.2 — same precedent as PC: the harness plots
+  `warm_mix` in tab:orange (fast-weight's color), and gold/amber would collide with the UI accent,
+  so it earned its own vermilion token; its cold point renders in the `reference` blue, drawn over
+  the warm curve's cold start, so "cold == the context-mixing reference" reads visually).
   This keeps the interactive re-renders visually honest against the embedded PNGs.
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (8 uses), `Pipeline` (5), `CardGrid` (2),
-  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 8 chart instances and
+- **Rule of two (factored shared viz):** `BpbFlopChart` (11 uses), `Pipeline` (6), `CardGrid` (2),
+  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 11 chart instances and
   one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
   - Wrap page body in `<Layout …>` via `import` + element, **not** the `layout:` frontmatter
@@ -115,12 +119,13 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 
 ## Pages (status: all built, build green)
 
-- **Concepts (7):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
+- **Concepts (8):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
   prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
-  predictive-coding.
-- **Experiments (6 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
+  predictive-coding, online-warmup.
+- **Experiments (7 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
   context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
-  first-finding-pareto. Each renders the shared interactive `BpbFlopChart` (one plot per page;
+  B.2-warmed-mixing, first-finding-pareto. Each renders the shared interactive `BpbFlopChart`
+  (one plot per page; B.2 is the lone two-plot page — Phase 1 + Phase 2 are distinct experiments;
   harness PNGs stay as artifacts under `experiments/`, not embedded — session 6).
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
 
@@ -216,3 +221,27 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   on a log-FLOP axis (the three pretrained entrants share x), so the chart carries the macro Pareto
   story and the result table carries the lever (flagged in both captions). Researcher note found
   internally consistent — no science flagged.
+- **2026-06-19 (session 9 — B.2 warmed-mixing pages):** authored two pages from the researcher notes
+  — concept `online-warmup` (amortized vs transductive vs warm-start intuition → smoothed-frequency
+  KaTeX → why it's nearly free → why it's a legit Source-(iv) move; `Pipeline` + reused interactive
+  `BpbFlopChart`) and experiment `B.2-warmed-mixing` (transductive-handicap framing; Phase 1 —
+  `warm_mix` strictly dominates the transformer per FLOP, the project's FIRST genuine per-FLOP win,
+  on real enwik8, headline `insight` Callout; the order curve; Phase 2 — `gated_mix` honestly
+  Pareto-hollow, `caveat` Callout spelling out WHY [gate overhead on an already-cheap mix];
+  FLOP-honesty/verdict/learnings). Added a new semantic data role `warm` + `--c-warm` vermilion token
+  across `curves.ts`, `compendium.js` `ROLE_COLOR`, `global.css` (swatch) and `ConceptMap`
+  (`role-warm`) — same precedent as `pc_refine`. Added the `warmedMixing` (Phase 1: transformer point
+  + warm_mix curve + a `reference`-blue cold marker drawn over the warm curve's cold start) and
+  `gatedMix` (Phase 2: fixed-order warm_mix frontier + dominated `neutral`-gray gated curve) datasets.
+  Wired both into `nav.ts` (CONCEPT 08, EXP B.2), the `ConceptMap` (new `Online warm-start` node off
+  context-mixing; B.2 leaf on the experiment bus, re-spaced to 7 leaves at `LEAF_W=128`), the
+  experiments index (auto via nav), and reciprocal See-also links on context-mixing / source-iv /
+  prequential / loss-per-flop / context-mixing-reference / first-finding. No new component factored —
+  rule of two not triggered (reused `BpbFlopChart` / `Callout` / `Pipeline` / `ConceptMap` /
+  `CardGrid`); `BpbFlopChart` now 11 uses, `Pipeline` 6. Build green (17 pages); verified from
+  `file://` (zero console errors): both charts mount, the Phase-1 blue cold dot sits at the warm
+  curve's origin, every Phase-2 gated point reads as dominated, KaTeX renders (18 nodes on B.2), no
+  `\u` leaks, map shows the warm node + B.2 leaf with no overlaps, all cross-links resolve. **Viz
+  note:** Phase 2's real FLOP span is narrow (1.23–1.57×10⁹, one log decade) so the chart shows a
+  single x tick — faithful to the data; the domination is carried by the vertical separation + the
+  caption. Researcher note found internally consistent — no science flagged.

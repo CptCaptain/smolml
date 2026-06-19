@@ -17,6 +17,28 @@ on top. Each entry should link the concept pages it touches and embed/link the b
 
 ## Entries
 
+## 2026-06-19 — Warmed online mixing (B.2): first real win + an honest negative  [status: done]
+
+- **Concepts:** [Online warm-start](../concepts/online-warmup.md),
+  [Online context mixing](../concepts/context-mixing.md),
+  [Prequential evaluation](../concepts/prequential-evaluation.md),
+  [Loss per FLOP](../concepts/loss-per-flop-and-scaling-laws.md)
+- **Hypothesis:** the context-mixing reference loses to the transformer only from its *cold-start*
+  handicap; a FLOP-counted prior warm-start (Phase 1, `warm_mix`) removes it, and gated order
+  escalation (Phase 2, `gated_mix`, the A∩C fusion) then beats fixed-order mixing per FLOP.
+- **Setup:** REAL enwik8 (first 4 MB; eval = final 32 k bytes, disjoint); `warm_mix` = context-mixing
+  + a stateful prior→eval handoff; `gated_mix` escalates orders on a pre-reveal gate. First run off
+  the synthetic clone.
+- **Result:** `warm_mix` **2.7700 bpb @ 1.03e10** vs the transformer's **5.5453 @ 9.71e11** — strictly
+  dominates per FLOP (~94× fewer FLOPs); cold == reference. `gated_mix` is **Pareto-dominated** by
+  fixed-order `warm_mix` (gate overhead exceeds the savings on already-cheap mixing).
+  [Full note + curves.](B.2-warmed-mixing.md)
+- **Verdict:** Phase 1 = the project's **first genuine per-FLOP win** (new bar); Phase 2 = honest
+  Pareto-hollow.
+- **What we learned:** the *handicap*, not the mechanism, was the reference's weakness; real enwik8
+  rewards deep context (synthetic punished it); gating an already-cheap learner doesn't pay; the bar
+  is now `warm_mix`, not the transformer.
+
 ## 2026-06-19 — Surprise-gated predictive-coding refinement (B.1)  [status: done]
 
 - **Concepts:** [Predictive coding](../concepts/predictive-coding.md),

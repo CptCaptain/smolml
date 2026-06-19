@@ -83,6 +83,15 @@ more FLOPs) and is dominated per-FLOP by the context-mixing reference. Next gate
 (b)/variant β: a **real-enwik8** control where per-byte difficulty actually varies. See
 `docs/learning/experiments/B.1-surprise-gated-pc-refinement.md`.
 
+### B.2 result — warmed online mixing (`warm_mix`) + gated escalation (`gated_mix`)
+First **genuine per-FLOP win** in the project, on the **real enwik8** corpus. `warm_mix` =
+context-mixing + a FLOP-counted prior→eval warm-start: 2.7700 bpb @ 1.03e10 vs the transformer's
+5.5453 @ 9.71e11 — strictly dominates per FLOP (~94× cheaper); cold-start == the reference. The bold
+A∩C fusion `gated_mix` (gated order escalation) is **Pareto-hollow** against it — the gate's
+per-escalation overhead exceeds the savings on already-cheap mixing. Lesson: the reference's loss was
+its *transductive handicap*, not its structure; the bar is now `warm_mix`. See
+`docs/learning/experiments/B.2-warmed-mixing.md`.
+
 LOCKED (ADR 0004) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
 total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot
 leak the future — honest generalization with no held-out split needed), then may adapt on the

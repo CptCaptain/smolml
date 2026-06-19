@@ -15,8 +15,10 @@ import ContextMixingDemo from "../../components/ContextMixingDemo.astro";
     { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
     { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
     { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/online-warmup", title: "Online warm-start" },
     { href: "/experiments/context-mixing-reference", title: "Context-mixing reference ceiling" },
     { href: "/experiments/first-finding-pareto", title: "First finding — Pareto-hollow" },
+    { href: "/experiments/B.2-warmed-mixing", title: "B.2 — warmed mixing" },
   ]}
 >
 
@@ -127,5 +129,7 @@ is chasing — see the [context-mixing reference experiment](/experiments/contex
 - [Compression = prediction](/concepts/compression-equals-prediction) — why a compressor *is* a predictor.
 - [Prequential evaluation](/concepts/prequential-evaluation) — the single-pass protocol this lives in.
 - [First finding](/experiments/first-finding-pareto) — where this free reference Pareto-dominates the neural runs.
+- [Online warm-start](/concepts/online-warmup) — this same mixer, warmed on the prior corpus first.
+- [Experiment B.2 — warmed mixing](/experiments/B.2-warmed-mixing) — warming this reference beats the transformer per FLOP.
 
 </Layout>

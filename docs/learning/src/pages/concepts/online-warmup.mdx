@@ -1,0 +1,124 @@
+---
+title: Online warm-start & the transductive handicap
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import Pipeline from "../../components/Pipeline.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import { warmedMixing } from "../../data/curves";
+
+<Layout
+  title="Online warm-start & the transductive handicap"
+  kicker="CONCEPT 08"
+  blurb="Stream the free prior corpus through the learner first — nearly free, and it flips the win."
+  related={[
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/experiments/B.2-warmed-mixing", title: "B.2 — warmed mixing (first real win)" },
+  ]}
+>
+
+## Intuition
+
+There are two ways to spend FLOPs *before* you predict the eval stream — and a cheap third one the
+cold reference forgoes:
+
+- **Amortized** (the transformer): pour compute into *pretraining weights* on the prior corpus, then
+  predict with a frozen model.
+- **Transductive** (the [context-mixing reference](/concepts/context-mixing)): pretrain *nothing*;
+  learn entirely online, from a **cold start**, on the eval stream itself.
+- **Warm-started** (the third thing): a transductive learner streams the freely-usable prior corpus
+  through its *own* online update first — warming its state — then carries that state into eval. Its
+  FLOPs are counted like any other, but they are absurdly cheap next to gradient pretraining.
+
+[Prequential evaluation](/concepts/prequential-evaluation) (ADR-0004) puts all three on one curve.
+The **transductive handicap** is what the cold reference suffers by skipping that warm-up: it begins
+the eval stream knowing nothing, pays ~8 bits on byte 1, and climbs the learning curve from scratch.
+That handicap — *not* the mechanism — is why the cheap online learner loses to the transformer.
+Remove it and it wins (see [B.2](/experiments/B.2-warmed-mixing)).
+
+<Pipeline
+  steps={[
+    { label: "prior corpus", sub: "free, carve-disjoint" },
+    { label: "warm online", sub: "fold counts — FLOPs counted", accent: "reference" },
+    { label: "deep-copy state", sub: "warmed prior → each eval" },
+    { label: "eval stream", sub: "predict-before-reveal, warmed", accent: "accent" },
+  ]}
+  feedback="no leakage: warm-up sees only the prior corpus; each eval stream folds into its own copy and keeps adapting online"
+/>
+
+## The math (why warming is nearly free and very effective)
+
+A context model's prediction is a smoothed frequency over the $V = 256$ bytes — add-$\alpha$
+(Laplace) over the counts for the current context:
+
+$$p(b \mid \text{ctx}) = \frac{\text{count}[\text{ctx}][b] + \alpha}{\sum_{b'} \text{count}[\text{ctx}][b'] + \alpha V}$$
+
+Cold, every $\text{count}$ is zero, so the first predictions are ~uniform (the specialist abstains)
+and the learner pays the full ~8-bit toll until the tables fill. **Warming on $N$ prior bytes** fills
+those tables with real frequencies, so the *first* eval byte is already predicted from thousands of
+prior observations. The cost is just $N$ online updates — for byte-level mixing, $\approx O(K \cdot V)$
+FLOPs each, with **no backprop and no matmul-heavy forward/backward**:
+
+$$C_{\text{warm}} \approx N \cdot O(K \cdot V) \quad\text{vs.}\quad C_{\text{pretrain}} \approx 6 \cdot N_{\text{params}} \cdot D$$
+
+On real `enwik8`, warming a few hundred-thousand bytes turns a ~3.2-bpb cold start into ~2.8 bpb at a
+tiny FLOP cost — while a transformer needs **orders of magnitude** more compute to reach comparable
+bpb. That is the whole curve below: same mechanism, warmed.
+
+<figure class="figure">
+  <BpbFlopChart
+    series={warmedMixing}
+    yMin={2.5}
+    yMax={5.8}
+    annotations={[
+      { flops: 3.05e8, bpb: 3.2106, text: "cold start = the context-mixing reference", dx: 18, dy: -12 },
+      { flops: 1.03e10, bpb: 2.77, text: "warmed — beats the transformer per FLOP", dx: -12, dy: 30 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    The handicap removed (experiment B.2, Phase 1). The
+    <span class="swatch reference"></span>cold reference dot is exactly warm_mix at warm-up 0; warming
+    drags the <span class="swatch warm"></span>warm_mix curve down and right, and at every tractable
+    budget it sits far below the <span class="swatch transformer"></span>transformer — which spends
+    ~94&times; more total FLOPs for worse bpb. Bounded-but-real scale: a 4 MB real-`enwik8` slice,
+    32,768-byte eval, prior/eval disjoint, all FLOPs counted.
+  </figcaption>
+</figure>
+
+## Why it's a legitimate Source-(iv) move
+
+Warm-start is *amortized pretraining for a transductive learner*. It is allowed — ADR-0004 lists
+"online warm-up" as in-scope and the prior corpus is freely usable — and it is **honestly metered**:
+every warm-up byte's FLOPs are on the curve, so it can never hide compute the way an uncounted eval
+pass would.
+
+It qualifies under the [Source-(iv)](/concepts/source-iv-advantage) filter because the *dynamics* —
+cheap online frequency estimation — extract far more loss-reduction per FLOP than gradient descent
+does at this scale. It is the cleanest demonstration of the project's thesis that **how** you spend
+FLOPs matters more than **how many**.
+
+<Callout variant="insight">
+The cheap online learner was never the problem — its *cold start* was. A FLOP-counted warm-up is the
+difference between a yardstick the transformer beats and a candidate that beats the transformer.
+</Callout>
+
+<Callout variant="caveat">
+Warming is not a free lunch you can pour forever: it moves the learner to its single-pass frequency
+ceiling, not past it. B.2's [gated escalation](/experiments/B.2-warmed-mixing) shows the *next* lever
+— adaptive-depth mixing — does **not** pay, because the warmed mixer is already near its per-FLOP
+frontier. Warm-start banks the win; it does not keep giving.
+</Callout>
+
+## See also
+
+- [Prequential evaluation](/concepts/prequential-evaluation) — the protocol that unifies amortized, transductive, and warm-started on one curve.
+- [Online context mixing](/concepts/context-mixing) — the learner being warmed.
+- [Loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws) — the axis warm-start moves so cheaply.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — why cheap online dynamics qualify as a real win.
+- [Experiment B.2](/experiments/B.2-warmed-mixing) — warm_mix beats the transformer per FLOP; gated escalation does not.
+
+</Layout>

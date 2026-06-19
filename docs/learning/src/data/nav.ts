@@ -61,6 +61,13 @@ export const concepts: NavItem[] = [
     blurb: "Settle on the hard bytes: error-minimizing inference, gated by surprise.",
     kicker: "CONCEPT 07",
   },
+  {
+    slug: "online-warmup",
+    href: "/concepts/online-warmup",
+    title: "Online warm-start & the transductive handicap",
+    blurb: "Stream the free prior corpus through the learner first — nearly free, and it flips the win.",
+    kicker: "CONCEPT 08",
+  },
 ];
 
 export const experiments: NavItem[] = [
@@ -105,6 +112,13 @@ export const experiments: NavItem[] = [
     title: "B.1 — surprise-gated PC refinement",
     blurb: "The (iv) gating lever is real; the PC-refinement mechanism is Pareto-hollow.",
     kicker: "EXP B.1",
+  },
+  {
+    slug: "B.2-warmed-mixing",
+    href: "/experiments/B.2-warmed-mixing",
+    title: "B.2 — warmed mixing (first real win)",
+    blurb: "warm_mix dominates the transformer per FLOP; gated escalation is honestly Pareto-hollow.",
+    kicker: "EXP B.2",
   },
   {
     slug: "first-finding-pareto",

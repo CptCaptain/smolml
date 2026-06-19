@@ -2,7 +2,7 @@
 // The index concept map: a hand-laid top-down DAG of the compendium, with
 // clickable nodes. Replaces the source mermaid graph with a styled, on-brand
 // SVG so the landing page is the navigational spine (no orphan pages).
-type Role = "accent" | "reference" | "fast_weight" | "transformer" | "pc";
+type Role = "accent" | "reference" | "fast_weight" | "transformer" | "pc" | "warm";
 interface Node {
   id: string;
   x: number;
@@ -22,6 +22,7 @@ const nodes: Node[] = [
   { id: "cmix", x: 668, y: 306, w: 190, label: "Online context mixing", role: "reference", href: "/concepts/context-mixing" },
   { id: "fwm", x: 462, y: 414, w: 184, label: "Fast-weight memory", role: "fast_weight", href: "/concepts/fast-weight-memory" },
   { id: "pc", x: 780, y: 414, w: 170, label: "Predictive coding", role: "pc", href: "/concepts/predictive-coding" },
+  { id: "warm", x: 652, y: 366, w: 150, label: "Online warm-start", role: "warm", href: "/concepts/online-warmup" },
   { id: "exp", x: 462, y: 504, w: 156, label: "Experiment log", role: "accent", href: "/experiments" },
 ];
 const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
@@ -47,20 +48,22 @@ const edges: Edge[] = [
   { from: "preq", to: "exp", dashed: true },
   { from: "s4", to: "pc" },
   { from: "pc", to: "exp", dashed: true },
+  { from: "cmix", to: "warm" },
 ];
 
 // Experiment leaves: each individual experiment page, hung off the log node on a
 // connector "bus" so every experiment is reachable from the map too (no orphans).
-const LEAF_W = 150;
+const LEAF_W = 128;
 const LEAF_Y = 602;
 const BUS_Y = 564;
 const expLeaves: Node[] = [
-  { id: "e01", x: 80, y: LEAF_Y, w: LEAF_W, label: "0.1 baseline smoke", href: "/experiments/0.1-baseline-harness-smoke" },
-  { id: "e02", x: 236, y: LEAF_Y, w: LEAF_W, label: "0.2 prequential", href: "/experiments/0.2-prequential-baseline" },
-  { id: "eref", x: 392, y: LEAF_Y, w: LEAF_W, label: "0.3 cmix reference", role: "reference", href: "/experiments/context-mixing-reference" },
-  { id: "ea1", x: 548, y: LEAF_Y, w: LEAF_W, label: "A.1 fast-weight", role: "fast_weight", href: "/experiments/A.1-fast-weight-memory" },
-  { id: "eb1", x: 704, y: LEAF_Y, w: LEAF_W, label: "B.1 PC refinement", role: "pc", href: "/experiments/B.1-surprise-gated-pc-refinement" },
-  { id: "eff", x: 860, y: LEAF_Y, w: LEAF_W, label: "first finding", role: "accent", href: "/experiments/first-finding-pareto" },
+  { id: "e01", x: 72, y: LEAF_Y, w: LEAF_W, label: "0.1 baseline smoke", href: "/experiments/0.1-baseline-harness-smoke" },
+  { id: "e02", x: 205, y: LEAF_Y, w: LEAF_W, label: "0.2 prequential", href: "/experiments/0.2-prequential-baseline" },
+  { id: "eref", x: 338, y: LEAF_Y, w: LEAF_W, label: "0.3 cmix reference", role: "reference", href: "/experiments/context-mixing-reference" },
+  { id: "ea1", x: 471, y: LEAF_Y, w: LEAF_W, label: "A.1 fast-weight", role: "fast_weight", href: "/experiments/A.1-fast-weight-memory" },
+  { id: "eb1", x: 604, y: LEAF_Y, w: LEAF_W, label: "B.1 PC refinement", role: "pc", href: "/experiments/B.1-surprise-gated-pc-refinement" },
+  { id: "eb2", x: 737, y: LEAF_Y, w: LEAF_W, label: "B.2 warmed mixing", role: "warm", href: "/experiments/B.2-warmed-mixing" },
+  { id: "eff", x: 870, y: LEAF_Y, w: LEAF_W, label: "first finding", role: "accent", href: "/experiments/first-finding-pareto" },
 ];
 
 function endpoints(a: Node, b: Node) {
@@ -192,6 +195,9 @@ function edgePath(a: Node, b: Node) {
   }
   .role-pc rect {
     stroke: var(--c-pc);
+  }
+  .role-warm rect {
+    stroke: var(--c-warm);
   }
   .role-accent rect {
     stroke: var(--accent);

@@ -1,0 +1,204 @@
+---
+title: B.2 — warmed mixing (first real win)
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import { warmedMixing, gatedMix } from "../../data/curves";
+
+<Layout
+  title="B.2 — warmed online mixing (the first real win) + gated escalation"
+  kicker="EXP B.2"
+  blurb="warm_mix strictly dominates the transformer per FLOP — the project's first genuine win; gated_mix is honestly Pareto-hollow."
+  related={[
+    { href: "/concepts/online-warmup", title: "Online warm-start & the transductive handicap" },
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/experiments/context-mixing-reference", title: "Context-mixing reference ceiling" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — Pareto-hollow" },
+  ]}
+>
+
+<Callout variant="insight" title="the first genuine per-FLOP win, on real text">
+Removing one handicap flips the whole result: `warm_mix` — the context-mixer with a FLOP-counted
+**warm-start** — reaches **2.77 bpb at ~94&times; fewer total FLOPs** than the transformer's 5.55,
+so it **strictly dominates** it (lower bpb *and* lower FLOPs). This is the project's first real
+per-FLOP win, and its first move off the synthetic clone onto **real `enwik8`**. The bold follow-up,
+`gated_mix`, is an **honest negative** — read Phase 2 before borrowing the idea.
+</Callout>
+
+**Status:** the project's **first genuine per-FLOP win**. **Concepts:**
+[online warm-start](/concepts/online-warmup), [online context mixing](/concepts/context-mixing),
+[Source-(iv)](/concepts/source-iv-advantage),
+[prequential evaluation](/concepts/prequential-evaluation),
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws).
+
+## Where it came from
+
+The [B.1](/experiments/B.1-surprise-gated-pc-refinement) design fan-out's adversarial critics noticed
+(and a verification probe confirmed) that the
+[context-mixing reference](/experiments/context-mixing-reference) loses to the transformer **only
+because it cold-starts** — it is purely [transductive](/concepts/online-warmup) and throws away
+everything it could learn from the freely-usable prior corpus. That is a *handicap*, not a property of
+the mechanism. Remove it cheaply and the cheap learner wins.
+
+## Phase 1 — `warm_mix`: remove the transductive handicap
+
+`warm_mix` is the context-mixer with **one** new idea: a **stateful prior&rarr;eval handoff**. During
+pretraining it folds the prior corpus into its count tables (warm-up, **every FLOP counted**), then
+**deep-copies** that warmed state into each eval stream so prediction starts from warmed statistics
+instead of cold uniform priors. At warm-up budget 0 it is **bit-identical** to the cold reference (a
+clean baseline). No leakage: warm-up sees only the carve-disjoint prior; each eval folds into its own
+copy.
+
+Real `enwik8` (first 4 MB; eval = final 32,768 bytes, disjoint; all FLOPs counted):
+
+| run | bpb | total FLOPs |
+| --- | ---: | ---: |
+| transformer (anchor) | 5.5453 | $9.71\times10^{11}$ |
+| `warm_mix` cold (= reference) | 3.2106 | $3.05\times10^{8}$ |
+| `warm_mix` warmed @1e9 | 2.8805 | $1.30\times10^{9}$ |
+| **`warm_mix` warmed @1e10** | **2.7700** | $\mathbf{1.03\times10^{10}}$ |
+
+<figure class="figure">
+  <BpbFlopChart
+    series={warmedMixing}
+    yMin={2.5}
+    yMax={5.8}
+    annotations={[
+      { flops: 3.05e8, bpb: 3.2106, text: "cold = the context-mixing reference", dx: 18, dy: -12 },
+      { flops: 9.71e11, bpb: 5.5453, text: "transformer — ~94× more FLOPs, far worse bpb", dx: -16, dy: 28 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    bpb vs total FLOPs (Phase 1). The <span class="swatch reference"></span>cold dot is `warm_mix` at
+    warm-up 0 — bit-identical to the context-mixing reference; warming drags the
+    <span class="swatch warm"></span>`warm_mix` curve down and right, staying far below the
+    <span class="swatch transformer"></span>transformer at every tractable budget. Bounded-but-real:
+    a 4 MB real-`enwik8` slice with a 32,768-byte disjoint eval, not the full ADR carve.
+  </figcaption>
+</figure>
+
+`warm_mix` **strictly dominates the transformer**: lower bpb at **~94&times; fewer total FLOPs**, with
+warm-up monotonic (&minus;0.44 bpb cold&rarr;warm). Honest caveats: the tiny transformer is badly
+undertrained at this budget (real `enwik8` &gt;&gt; the synthetic clone) and its windowed-recompute
+*eval alone* is $9.5\times10^{11}$ ($\approx$3000&times; `warm_mix`'s eval); at much larger scale it
+would eventually win absolute bpb, but **per FLOP at every tractable budget, warmed mixing wins**.
+This is the Hutter/PAQ thesis confirmed on real text: a transformer is a FLOP-inefficient *learner* at
+tiny scale.
+
+<Callout variant="insight" title="the bar moved">
+This is the new bar. Future candidates must beat `warm_mix` (&approx;2.66 bpb @ ~$1.5\times10^{9}$ on
+this carve), **not** the transformer. The cold reference is no longer a ceiling a candidate "fails to
+reach" — it is a candidate that *wins*, once you stop handicapping it.
+</Callout>
+
+## The order curve (what motivated Phase 2)
+
+On real `enwik8`, deeper context keeps paying — unlike the order-0 synthetic clone where it *hurt*:
+
+| `max_order` (warmed @1e9) | 2 | 3 | 4 | 5 | 6 | 8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| bpb | 3.248 | 2.881 | 2.710 | 2.667 | **2.655** | 2.664 |
+
+But the fixed-order mixer evaluates **all** orders on **every** byte, while the high orders earn bits
+only on the minority of bytes with deep recurring context. That looked like a
+[Source-(iv)](/concepts/source-iv-advantage) lever: spend the deep-order compute only where it pays.
+
+## Phase 2 — `gated_mix`: the A&cap;C fusion (gated order escalation)
+
+`gated_mix` holds orders `0..K_max` (warmed) but predicts by **escalating cheapest-first** and
+**stopping** once a **pre-reveal `1 − max p` gate** says the partial mix is confident enough —
+charging FLOPs for only the orders evaluated. This is simultaneously **A** (the expensive high-order
+compute fires only on high-surprise bytes) and **C** (an order is "grown into" the mix only where it
+pays). At `min_order == max_order` it is bit-identical to fixed-order `warm_mix`.
+
+| entrant | bpb | total FLOPs | eval FLOPs |
+| --- | ---: | ---: | ---: |
+| fixed `warm_mix` order-2 | 3.2482 | $1.229\times10^{9}$ | $2.44\times10^{8}$ |
+| fixed `warm_mix` order-3 | 2.8805 | $1.304\times10^{9}$ | $3.10\times10^{8}$ |
+| fixed `warm_mix` order-4 | 2.7096 | $1.351\times10^{9}$ | $3.73\times10^{8}$ |
+| fixed `warm_mix` order-5 | 2.6666 | $1.422\times10^{9}$ | $4.32\times10^{8}$ |
+| fixed `warm_mix` order-6 | **2.6552** | $1.477\times10^{9}$ | $4.87\times10^{8}$ |
+| `gated_mix` thr=0.1 (near-full) | 2.6698 | $1.570\times10^{9}$ | $6.11\times10^{8}$ |
+| `gated_mix` thr=0.3 | 2.7037 | $1.538\times10^{9}$ | $5.62\times10^{8}$ |
+| `gated_mix` thr=0.5 | 2.8274 | $1.463\times10^{9}$ | $4.90\times10^{8}$ |
+| `gated_mix` thr=0.7 (aggressive) | 3.1179 | $1.335\times10^{9}$ | $3.75\times10^{8}$ |
+
+<figure class="figure">
+  <BpbFlopChart
+    series={gatedMix}
+    yMin={2.6}
+    yMax={3.3}
+    annotations={[
+      { flops: 1.335e9, bpb: 3.1179, text: "gated_mix — every point dominated by a fixed-order point", dx: 14, dy: -18 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    bpb vs total FLOPs (Phase 2), zoomed to the warmed-@1e9 regime. Every
+    <span class="swatch neutral"></span>`gated_mix` point sits up-and-right of the
+    <span class="swatch warm"></span>fixed-order `warm_mix` frontier — i.e. each is **dominated** by a
+    fixed-order point (worse-or-equal bpb at worse-or-equal FLOPs). The gate buys nothing here.
+  </figcaption>
+</figure>
+
+<Callout variant="caveat" title="Pareto-hollow — this is NOT a win">
+Every gated point is dominated by a fixed-order point (&le; bpb **and** &le; FLOPs). The mechanism is
+clear: the gate **recomputes a confidence softmax at each escalation level** ($O(\text{depth}\cdot V)$
+overhead), but the underlying mix is *already* a single cheap $O(K\cdot V)$ matmul — so escalating deep
+costs **more** than fixed (thr=0.1: worse bpb *and* more FLOPs), and gating hard degrades bpb faster
+than FLOPs drop (the aggressive points lose even with a hypothetically free gate). The B.1 critics
+predicted exactly this: the mixer's online weights already do soft marginal-loss allocation, so hard
+gating cannot beat it — and the gate is not free.
+</Callout>
+
+## FLOP honesty
+
+Both candidates charge every op via `smolml.flops` and return it from `step` / `train_step` (warm-up
+folds, mixing, Laplace, mixer-SGD, and — for `gated_mix` — the per-escalation gate arithmetic). A
+cross-vendor review caught and fixed an uncharged warm-up-CE recomputation in `warm_mix`; it verified
+`gated_mix`'s per-byte charge equals exactly the evaluated orders, the budget guard is a safe upper
+bound, the gate is pre-reveal, and `min_order == max_order` is bit-identical to `warm_mix`.
+
+## Verdict
+
+**`warm_mix` is the first real per-FLOP win** and the new bar (the transformer is decisively beaten;
+the cold reference is strictly extended). **`gated_mix` is an honest Pareto-hollow** against it —
+online mixing is already near its per-FLOP frontier, and adaptive-depth gating doesn't pay because the
+thing being gated is already cheap and the gate is not free.
+
+## What we learned
+
+1. **The handicap, not the mechanism.** The context-mixing reference lost to the transformer purely
+   from its cold-start; a cheap, FLOP-counted [warm-start](/concepts/online-warmup) flips it to a
+   decisive per-FLOP win. The cheap online learner was never the problem.
+2. **The corpus matters.** Real `enwik8` rewards deep context (to ~order-6); the order-0 synthetic
+   clone punished it. Levers that need genuine difficulty/structure (B.1's gate, B.2's escalation) can
+   only be judged on real text — which is why we moved here.
+3. **Gating a cheap thing rarely pays.** When the base computation is already a single cheap matmul
+   with learned soft allocation, a per-byte gate adds overhead comparable to what it saves. Gating
+   wins only when the gated work is *expensive* relative to the gate.
+4. **The bar moved.** Future candidates must beat `warm_mix` (&approx;2.66 bpb @ ~$1.5\times10^{9}$ on
+   this carve), not the transformer. That likely needs a mechanism capturing structure the mixer
+   **cannot** (long-range / positional / semantic) at genuinely low FLOP — not a re-allocation of the
+   mixer's own already-efficient compute.
+
+<Callout variant="note" title="scale & reproduce">
+Bounded-but-real (pure-Python mixing is ~53 µs/byte, so the full 95 MB / 5 MB ADR carve stays
+GPU/opt-in): a 4 MB real-`enwik8` slice, 32 k eval, warm-up &le; ~1 M bytes. Real text, prior/eval
+disjoint, all FLOPs counted — not the full-5 MB endpoint, but a faithful real-text per-FLOP ordering.
+Phase 1: `uv run python -m smolml.experiments.warm_mix_enwik8`; Phase 2:
+`uv run python -m smolml.experiments.gated_mix_enwik8`.
+</Callout>
+
+## See also
+
+- [Online warm-start & the transductive handicap](/concepts/online-warmup) — the mechanism and its math.
+- [Online context mixing](/concepts/context-mixing) — the learner that gets warmed.
+- [Context-mixing reference ceiling](/experiments/context-mixing-reference) — the cold baseline this extends into a win.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win that counts, and the one warm-start earns.
+- [First finding — Pareto-hollow](/experiments/first-finding-pareto) — the methodological trap `gated_mix` avoids by being honest about it.
+
+</Layout>

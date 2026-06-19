@@ -14,6 +14,7 @@ export type SeriesRole =
   | "transformer" // transformer baseline (matplotlib tab:green / orange in solo plot)
   | "free" // the free online unigram floor
   | "pc_refine" // surprise-gated predictive-coding refinement (B.1, matplotlib tab:orange; site rose so it never reads as fast-weight)
+  | "warm" // warm_mix: warmed online context-mixer (B.2; harness tab:orange, site vermilion --c-warm so it never reads as fast-weight)
   | "neutral";
 
 export interface CurvePoint {
@@ -218,5 +219,82 @@ export const surpriseGatedPc: Series[] = [
     role: "reference",
     kind: "point",
     points: [{ flops: 1.036e7, bpb: 4.4637, tag: "free, ~10⁷ FLOPs — the per-FLOP ceiling" }],
+  },
+];
+
+// ── B.2 Phase 1: warm_mix vs transformer (real enwik8, 4 MB slice, 32 k eval) ──
+// Source: experiments/B.2-warmed-mixing.md (Phase-1 table). The project's first move
+// onto real text (ADR-0004 enwik8 carve); prior/eval disjoint, ALL FLOPs counted.
+// warm_mix is the context-mixer with one new idea — a stateful prior→eval warm-start:
+// at warmup 0 it is bit-identical to the cold context-mixing reference (rendered here
+// as a separate `reference` marker, drawn over the warm curve's cold start, so the
+// "cold == reference" identity is visually explicit), then warming drops bpb cheaply.
+// warm_mix strictly dominates the transformer: lower bpb at ~94× fewer total FLOPs —
+// the project's first genuine per-FLOP win. (The transformer is badly undertrained at
+// this tiny budget; its windowed-recompute eval alone is ~9.5e11 FLOPs.)
+export const warmedMixing: Series[] = [
+  {
+    id: "transformer",
+    label: "transformer baseline",
+    role: "transformer",
+    kind: "point",
+    points: [{ flops: 9.71e11, bpb: 5.5453, tag: "badly undertrained on real enwik8" }],
+  },
+  {
+    id: "warm_mix",
+    label: "warm_mix (warmed)",
+    role: "warm",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 3.05e8, bpb: 3.2106, tag: "warmup 0 — bit-identical to the cold reference" },
+      { flops: 1.3e9, bpb: 2.8805, tag: "warmed @1e9" },
+      { flops: 1.03e10, bpb: 2.77, tag: "warmed @1e10 — strictly dominates the transformer" },
+    ],
+  },
+  {
+    id: "context_mixing",
+    label: "context-mixing reference (cold)",
+    role: "reference",
+    kind: "point",
+    points: [{ flops: 3.05e8, bpb: 3.2106, tag: "warm_mix @ warmup 0" }],
+  },
+];
+
+// ── B.2 Phase 2: gated_mix vs fixed-order warm_mix (real enwik8, warmed @1e9) ──
+// Source: experiments/B.2-warmed-mixing.md (Phase-2 table). The fixed-order warm_mix
+// curve (orders 2..6) is the frontier; gated_mix holds orders 0..K but escalates
+// cheapest-first and stops on a pre-reveal `1 − max p` gate, charging FLOPs only for
+// the orders evaluated (thresholds 0.7 / 0.5 / 0.3 / 0.1). Every gated point is
+// dominated by a fixed-order point (≤ bpb AND ≤ FLOPs): the gate recomputes a
+// confidence softmax per escalation (O(depth·V)) on top of an already-cheap O(K·V)
+// mix, so it costs more than it saves — honestly Pareto-hollow, NOT a win.
+export const gatedMix: Series[] = [
+  {
+    id: "warm_mix_fixed",
+    label: "warm_mix — fixed order (frontier)",
+    role: "warm",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 1.229e9, bpb: 3.2482, tag: "order 2" },
+      { flops: 1.304e9, bpb: 2.8805, tag: "order 3" },
+      { flops: 1.351e9, bpb: 2.7096, tag: "order 4" },
+      { flops: 1.422e9, bpb: 2.6666, tag: "order 5" },
+      { flops: 1.477e9, bpb: 2.6552, tag: "order 6 — best fixed" },
+    ],
+  },
+  {
+    id: "gated_mix",
+    label: "gated_mix (escalating gate)",
+    role: "neutral",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 1.335e9, bpb: 3.1179, tag: "thr 0.7 (aggressive)" },
+      { flops: 1.463e9, bpb: 2.8274, tag: "thr 0.5" },
+      { flops: 1.538e9, bpb: 2.7037, tag: "thr 0.3" },
+      { flops: 1.57e9, bpb: 2.6698, tag: "thr 0.1 (near-full)" },
+    ],
   },
 ];
