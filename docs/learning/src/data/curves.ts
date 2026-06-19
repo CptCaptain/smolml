@@ -38,7 +38,9 @@ export interface Series {
 
 // ── First finding: three-way Pareto (synthetic text8 clone, final 512 B tail) ──
 // Source: experiments/first-finding-pareto.md + experiments/unified-leaderboard.md
-// (the precise table). All three models on the same prequential protocol.
+// (the precise table). All three models on the same prequential protocol, now
+// at the canonical seq_len=128 (matches the 0.2 / A.1 runs after the master
+// regeneration), so the transformer/fast-weight numbers agree across all pages.
 export const firstFinding: Series[] = [
   {
     id: "context_mixing",
@@ -55,9 +57,9 @@ export const firstFinding: Series[] = [
     dashed: true,
     points: [
       { flops: 1.727e8, bpb: 8.0003, tag: "b0" },
-      { flops: 2.101e9, bpb: 7.055, tag: "b2×10⁹" },
-      { flops: 9.812e9, bpb: 4.6139, tag: "b10¹⁰" },
-      { flops: 4.001e10, bpb: 4.1564, tag: "b4×10¹⁰" },
+      { flops: 1.571e9, bpb: 7.6914, tag: "b2×10⁹" },
+      { flops: 9.962e9, bpb: 6.0125, tag: "b10¹⁰" },
+      { flops: 3.933e10, bpb: 4.2059, tag: "b4×10¹⁰" },
     ],
   },
   {
@@ -68,9 +70,9 @@ export const firstFinding: Series[] = [
     dashed: true,
     points: [
       { flops: 2.052e8, bpb: 7.4095, tag: "b0" },
-      { flops: 2.133e9, bpb: 6.8241, tag: "b2×10⁹" },
-      { flops: 9.844e9, bpb: 4.7534, tag: "b10¹⁰" },
-      { flops: 4.005e10, bpb: 4.3585, tag: "b4×10¹⁰" },
+      { flops: 1.604e9, bpb: 7.3953, tag: "b2×10⁹" },
+      { flops: 9.995e9, bpb: 5.9130, tag: "b10¹⁰" },
+      { flops: 3.936e10, bpb: 4.4017, tag: "b4×10¹⁰" },
     ],
   },
 ];

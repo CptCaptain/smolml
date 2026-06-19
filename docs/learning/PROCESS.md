@@ -85,22 +85,23 @@ prose source — I keep them and author the interactive pages under `src/`.
   first-finding-pareto (embeds `unified-leaderboard.png` + interactive 3-way chart).
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
 
-## Flagged for researchers (discrepancies in the source notes — NOT fixed, per the charter)
+## Flagged for researchers (RESOLVED 2026-06-19 by Main)
 
-1. **Transformer baseline bpb disagrees between notes at mid budgets.** At budget 10¹⁰ the
-   transformer is **6.0125 bpb** in `0.2-prequential-baseline.md`/`A.1-fast-weight-memory.md` but
-   **4.6139 bpb** in `first-finding-pareto.md`/`unified-leaderboard.md` (which says it was
-   "regenerated on master from all three merged models"). Budget 2×10⁹ similarly disagrees
-   (7.69 vs 7.06). Consequently the fast-weight crossover budget differs: A.1 reports fw **winning**
-   at 10¹⁰ (Δ −0.10), first-finding reports fw **losing** at 10¹⁰ (Δ +0.14). b0 (8.00) and b4×10¹⁰
-   (~4.16–4.21) roughly agree. The site renders each page faithful to its own note; researchers
-   should reconcile which run is canonical.
-2. **Context-mixing reference: near-identical FLOPs, different bpb across runs.** Order-0..1 on the
-   800 B English sample is 4.3922 bpb @ 4.28×10⁶ FLOPs (`experiments/index.md`); the
-   `context_mixing_reference` on the 512 B clone tail is 4.7779 bpb @ 4.283×10⁶ FLOPs
-   (`unified-leaderboard.md`). The FLOP counts are ~equal despite different eval-stream lengths
-   (800 vs 512 bytes) — worth confirming that coincidence is real (e.g. same order, different
-   warm-up), since per-byte cost should scale with bytes processed.
+Both discrepancies I raised were investigated by Main and reconciled — kept here as a record.
+
+1. **Transformer baseline bpb disagreed between notes at mid budgets — RESOLVED.** Root cause: the
+   original `unified-leaderboard` run used `seq_len=64` while the canonical `0.2` / `A.1` runs use
+   `seq_len=128`. Main regenerated the leaderboard at `seq_len=128`; all pages now agree. The
+   crossover flips vs my first build: `fast_weight` **wins** at b0/b2×10⁹/10¹⁰ (−0.59 / −0.30 /
+   −0.10) and **loses only** at 4×10¹⁰ (+0.19); the free reference (4.78) is below both neural
+   curves through 10¹⁰. `curves.ts` `firstFinding` and the first-finding page now carry the
+   canonical numbers (which equal the A.1 table), so the A.1 chart — which reuses `firstFinding` —
+   is self-consistent too.
+2. **Context-mixing reference: near-identical FLOPs, different bpb — EXPLAINED (not a bug).** The
+   0.3 order-sweep ran on the 800 B English sample at order 0..1 (4.3922 bpb @ 4.28×10⁶); the
+   unified run used the 512 B clone tail at the harness default order (4.7779 bpb @ 4.283×10⁶) —
+   different stream length *and* max-order, so the ~equal total FLOPs is coincidental. Each page is
+   faithful; a clarifying caveat was added to the context-mixing-reference page.
 
 ## Changelog
 
@@ -115,3 +116,10 @@ prose source — I keep them and author the interactive pages under `src/`.
   Authored all 5 experiment pages + the log index, embedding both harness plots and re-rendering
   the leaderboard as an interactive 3-way `BpbFlopChart` with a Pareto annotation. Wrote this
   `PROCESS.md`. Recorded MDX gotchas and two flagged source discrepancies. Build green (13 pages).
+- **2026-06-19 (session 3 — canonical reconciliation):** merged `master` (corrected
+  `first-finding-pareto.md` + regenerated `unified-leaderboard.png/.md` at `seq_len=128`).
+  Re-copied the regenerated plot into `src/assets`, updated `curves.ts` `firstFinding` and the
+  first-finding page (table, prose, annotation) to the canonical numbers — the fast-weight
+  crossover now flips (wins through 10¹⁰, loses only at 4×10¹⁰). Added a "two reference runs"
+  caveat to the context-mixing-reference page. Both flagged discrepancies marked resolved. Build
+  green (13 pages).

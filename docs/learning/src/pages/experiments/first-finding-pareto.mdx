@@ -31,7 +31,7 @@ import { firstFinding } from "../../data/curves";
 
 All three models on the **same** prequential protocol — synthetic text8 clone (200000 bytes,
 seed 0), final 512 bytes as the eval stream, `context_window=512`, slow-core `d_model=48,
-n_layers=3` — swept across pretraining budgets $\{0, 2\times10^{9}, 10^{10}, 4\times10^{10}\}$
+n_layers=3, seq_len=128` (identical to the canonical 0.2 / A.1 runs) — swept across pretraining budgets $\{0, 2\times10^{9}, 10^{10}, 4\times10^{10}\}$
 FLOPs, scored as validation bits-per-byte vs **total** FLOPs (pretrain $+$ inference).
 
 | model | budget | total FLOPs | bpb |
@@ -39,12 +39,12 @@ FLOPs, scored as validation bits-per-byte vs **total** FLOPs (pretrain $+$ infer
 | context_mixing (reference) | — | $4.28\times10^{6}$ | **4.78** |
 | transformer | 0 | $1.73\times10^{8}$ | 8.00 |
 | fast_weight | 0 | $2.05\times10^{8}$ | 7.41 |
-| transformer | $2\times10^{9}$ | $2.10\times10^{9}$ | 7.06 |
-| fast_weight | $2\times10^{9}$ | $2.13\times10^{9}$ | 6.82 |
-| transformer | $10^{10}$ | $9.81\times10^{9}$ | 4.61 |
-| fast_weight | $10^{10}$ | $9.84\times10^{9}$ | 4.75 |
-| transformer | $4\times10^{10}$ | $4.00\times10^{10}$ | 4.16 |
-| fast_weight | $4\times10^{10}$ | $4.01\times10^{10}$ | 4.36 |
+| transformer | $2\times10^{9}$ | $1.57\times10^{9}$ | 7.69 |
+| fast_weight | $2\times10^{9}$ | $1.60\times10^{9}$ | 7.40 |
+| transformer | $10^{10}$ | $9.96\times10^{9}$ | 6.01 |
+| fast_weight | $10^{10}$ | $1.00\times10^{10}$ | 5.91 |
+| transformer | $4\times10^{10}$ | $3.93\times10^{10}$ | 4.21 |
+| fast_weight | $4\times10^{10}$ | $3.94\times10^{10}$ | 4.40 |
 
 <HarnessPlot src={boardPlot} alt="Three-way leaderboard: transformer, fast_weight, and the context-mixing reference">
   The three-series bpb-vs-total-FLOP leaderboard (regenerated on `master` from all three merged
@@ -54,8 +54,8 @@ FLOPs, scored as validation bits-per-byte vs **total** FLOPs (pretrain $+$ infer
 ## The same plot, made interactive
 
 The lesson only lands when you can see the free reference sitting *under* the neural runs. Toggle
-the series and hover the points — the blue reference (1000&times; cheaper) is below both neural
-curves until $\sim10^{10}$ FLOPs:
+the series and hover the points — the blue reference (1000&times; cheaper) is below **both** neural
+curves through $10^{10}$ FLOPs; the neural models overtake it only at $4\times10^{10}$:
 
 <figure class="figure">
   <BpbFlopChart
@@ -65,7 +65,7 @@ curves until $\sim10^{10}$ FLOPs:
     yMin={4.0}
     yMax={8.3}
     annotations={[
-      { flops: 4.283e6, bpb: 4.7779, text: "free reference — Pareto-dominates the low/mid runs", dx: 18, dy: 4 },
+      { flops: 4.283e6, bpb: 4.7779, text: "free reference — below both neural runs through 10¹⁰", dx: 18, dy: 4 },
     ]}
   />
   <figcaption class="figcaption">
@@ -79,14 +79,18 @@ curves until $\sim10^{10}$ FLOPs:
 ## The finding (honest)
 
 `fast_weight` (frozen transformer core $+$ online associative memory) beats the transformer
-**baseline** at low budgets (−0.59 at b0, −0.23 at b2e9) and **loses** once the core is well-trained
-(+0.14 at b1e10, +0.20 at b4e10) — the memory helps a weak core and hurts a good one.
+**baseline** at every budget where the core is weak — −0.59 at b0, −0.30 at b2e9, −0.10 at b1e10 —
+and **loses** once the core is well-trained: +0.19 at b4e10. The memory helps a weak core and hurts
+a good one.
 
 But the win is **Pareto-hollow**: the free online context-mixing reference reaches 4.78 bpb for
-$\sim4.3\times10^{6}$ FLOPs — ~1000&times; cheaper than either neural model and *lower* bpb than
-both until $\sim10^{10}$ FLOPs. So `fast_weight`'s wins over the transformer all happen in the
-regime a free frequency model already dominates, and it gives up its edge exactly where neural
-models finally beat the reference. A real-`enwik8` control reproduced the pattern.
+$\sim4.3\times10^{6}$ FLOPs — ~1000&times; cheaper than either neural model, and *lower bpb than
+both* at every budget through $10^{10}$ (where the neural models are still at 5.9&ndash;6.0). The
+neural models overtake the free reference only at $4\times10^{10}$ — exactly the budget where
+`fast_weight` gives up its edge and loses to the plain transformer. So every `fast_weight` win over
+the transformer happens inside the region a free frequency model already dominates, and the
+memory's value vanishes precisely where neural compute finally pays off. A real-`enwik8` control
+reproduced the pattern.
 
 <Callout variant="insight" title="“beats the baseline” ≠ “good per FLOP”">
 The headline "fast-weight beats the transformer at low budgets" is a race between **two runners

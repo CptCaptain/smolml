@@ -61,6 +61,14 @@ Hutter-Prize lineage, reproduced at toy scale.
   point is the untrained transformer contrast. Lower-left is better.
 </HarnessPlot>
 
+<Callout variant="caveat" title="two reference runs, don't conflate them">
+The [first-finding leaderboard](/experiments/first-finding-pareto)'s context-mixing reference
+(4.78 bpb @ $4.28\times10^{6}$ FLOPs) is a **different run** — the 512 B synthetic-clone tail at
+the harness default order, not this 800 B English-sample order sweep. They land at near-identical
+total FLOPs by coincidence (different stream length *and* max-order), so the bpb differs; each page
+is faithful to its own run.
+</Callout>
+
 And the same data, re-rendered as the shared interactive chart — hover the order points, toggle the
 untrained-transformer contrast:
 
