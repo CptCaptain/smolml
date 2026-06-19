@@ -65,7 +65,6 @@ two: one chart routine for 6 chart instances; one stream scaffold for both strea
 | `Pipeline` | Left-to-right flow of labeled stages + arrows, optional dashed feedback leg (online loops). | `steps: {label,sub?,accent?}[]`, `feedback?` |
 | `ConceptMap` | The landing's hand-laid SVG DAG; clickable nodes link every page (the navigational spine). | _(none; static data)_ |
 | `CardGrid` | Responsive card grid over `NavItem[]` (landing + experiments index). | `items: NavItem[]` |
-| `HarnessPlot` | Embed a matplotlib PNG via `astro:assets`, tagged "harness plot" to distinguish from interactive re-renders. | `src: ImageMetadata`, `alt` |
 
 ### Data modules
 
@@ -83,9 +82,9 @@ two: one chart routine for 6 chart instances; one stream scaffold for both strea
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (6 uses), `Pipeline` (3), `StreamScaffold`
-  (2), `HarnessPlot` (2), `CardGrid` (2), `Callout` (everywhere). When a viz pattern recurs, it is
-  factored and the first use refactored to match.
+- **Rule of two (factored shared viz):** `BpbFlopChart` (6 uses), `Pipeline` (3), `CardGrid` (2),
+  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 6 chart instances and
+  one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
   - Wrap page body in `<Layout …>` via `import` + element, **not** the `layout:` frontmatter
     (frontmatter passes props under `frontmatter.*`, but `Layout` reads top-level props).
@@ -93,10 +92,17 @@ two: one chart routine for 6 chart instances; one stream scaffold for both strea
     ("Expected a closing tag"). Inline `$…$` is fine and protects its braces from JSX.
   - **Escape literal `<` in prose/tables as `&lt;`** — MDX reads `<x` as a JSX tag start (bit us on
     a `wins (fw<tr)` table header).
+  - **Use literal Unicode glyphs (→ — “ ” − ₂ Σ ÷ …), never `\uXXXX` escapes, in `src/`.** JSX
+    plain-string attributes and MDX prose do **not** interpret JS `\uXXXX` (only `{}` expressions
+    and `.ts`/frontmatter do), so an escape in an attribute or prose renders literally as text.
+    Glyphs are safe in every context (JS strings, JSX attrs, prose, KaTeX). `public/js/*.js` is
+    exempt — classic JS interprets `\u` fine.
   - Numbers belong in `curves.ts`, never inline in a page.
-- **Honesty:** harness-produced plots are embedded via `HarnessPlot` (labelled "harness plot");
-  reconstructed coordinates (e.g. 0.1's intermediate eval x-positions, which the notes don't report)
-  are flagged in the chart caption **and** the `reconstructed` flag on the series.
+- **Honesty & one plot per page:** each chart page shows exactly **one** plot — the interactive
+  `BpbFlopChart` (no duplicate static PNG beside it). The harness-produced PNGs still live under
+  `docs/learning/experiments/` as research artifacts but are not embedded. Reconstructed
+  coordinates (e.g. 0.1's intermediate eval x-positions, which the notes don't report) are flagged
+  in the chart caption **and** the `reconstructed` flag on the series.
 - **Accessibility (WCAG AA):** `--faint` (#6f6650, ~3:1 on the ink bg) is **decoration only**
   (borders, gridlines, swatch fills) — never small text; use `--muted` (#9a8e76, ~5.7:1) or lighter
   for any actual text. Interactive chart marks (`BpbFlopChart`) are keyboard-focusable
@@ -171,3 +177,11 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   first-finding load fully styled, sidebar/map links navigate, every widget renders **and** responds
   (slider, stream step, legend toggle, fast-weight recall, source-iv verdict), both harness plots
   load, math renders, **zero console errors / no ERR_FILE_NOT_FOUND**. Build green (13 pages).
+- **2026-06-19 (session 6 — user polish):** (1) one plot per page — removed the duplicate static
+  `HarnessPlot` PNG embed sitting beside the interactive `BpbFlopChart` on first-finding and
+  context-mixing-reference; deleted `HarnessPlot.astro`, the dead PNG asset imports, and the
+  `src/assets/` copies (the originals stay under `experiments/` as artifacts). (2) Swept every
+  literal `\uXXXX` escape in `src/` (32 across 7 files) to actual glyphs — JSX attrs/MDX prose
+  don't interpret `\u`, so they were rendering as text (e.g. fast-weight's `key\u2192byte`). Build
+  green (13 pages); verified from `file://`: no rendered text contains a `\u` escape, and the two
+  pages show exactly one (interactive) chart with no `<img>`. `git diff` confined to docs/learning.

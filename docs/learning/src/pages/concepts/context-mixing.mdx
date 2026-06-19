@@ -77,7 +77,7 @@ prediction is already a little better. That is the entire learning algorithm.
   steps={[
     { label: "recent bytes", sub: "context" },
     { label: "order-k counts", sub: "smoothed p_k", accent: "reference" },
-    { label: "stretch + mix", sub: "z = \u03a3 w_k log p_k" },
+    { label: "stretch + mix", sub: "z = Σ w_k log p_k" },
     { label: "softmax", sub: "P(next byte)", accent: "accent" },
   ]}
   feedback="after reveal: SGD step on w + counts[y] += 1 (single online pass)"

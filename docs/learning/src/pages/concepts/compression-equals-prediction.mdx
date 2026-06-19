@@ -31,10 +31,10 @@ the artifact.
   steps={[
     { label: "context", sub: "bytes so far" },
     { label: "model", sub: "p(next byte)", accent: "accent" },
-    { label: "\u2212log\u2082 p", sub: "bits for this byte" },
-    { label: "\u03a3 \u00f7 bytes", sub: "= bpb" },
+    { label: "−log₂ p", sub: "bits for this byte" },
+    { label: "Σ ÷ bytes", sub: "= bpb" },
   ]}
-  feedback="the same p drives an arithmetic coder \u2192 a compressed file of exactly that bit-length"
+  feedback="the same p drives an arithmetic coder → a compressed file of exactly that bit-length"
 />
 
 ## What bits-per-byte means

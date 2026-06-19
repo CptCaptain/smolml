@@ -35,8 +35,8 @@ length, tying back to [compression = prediction](/concepts/compression-equals-pr
   steps={[
     { label: "predict", sub: "p(next) before seeing it", accent: "accent" },
     { label: "reveal", sub: "true byte" },
-    { label: "pay", sub: "\u2212log\u2082 p bits" },
-    { label: "adapt", sub: "optional \u2014 FLOPs counted", accent: "fast_weight" },
+    { label: "pay", sub: "−log₂ p bits" },
+    { label: "adapt", sub: "optional — FLOPs counted", accent: "fast_weight" },
   ]}
   feedback="score = cumulative bpb at a fixed total-FLOP budget (pretraining + inference + adaptation, all counted)"
 />

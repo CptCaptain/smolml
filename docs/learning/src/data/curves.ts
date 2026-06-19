@@ -115,7 +115,7 @@ export const prequentialBaseline: Series[] = [
     kind: "curve",
     dashed: true,
     points: [
-      { flops: 1.7e8, bpb: 8.0, tag: "0 pretrain — \u201cno model\u201d" },
+      { flops: 1.7e8, bpb: 8.0, tag: "0 pretrain — “no model”" },
       { flops: 1.6e9, bpb: 7.69, tag: "2×10⁹" },
       { flops: 1.0e10, bpb: 6.01, tag: "10¹⁰" },
       { flops: 3.9e10, bpb: 4.21, tag: "4×10¹⁰" },
@@ -174,7 +174,7 @@ export const freeUnigram: Series = {
   label: "free online unigram (floor)",
   role: "free",
   kind: "point",
-  points: [{ flops: 1.3e5, bpb: 5.33, tag: "~10⁵ FLOPs \u2014 the honest floor" }],
+  points: [{ flops: 1.3e5, bpb: 5.33, tag: "~10⁵ FLOPs — the honest floor" }],
 };
 
 // The uninformed "no-model" anchor: uniform over 256 bytes = 8 bits/byte.

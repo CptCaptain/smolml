@@ -5,8 +5,6 @@ title: Context-mixing reference ceiling
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import BpbFlopChart from "../../components/BpbFlopChart.astro";
-import HarnessPlot from "../../components/HarnessPlot.astro";
-import refPlot from "../../assets/context-mixing-reference.png";
 import { contextMixingReference } from "../../data/curves";
 
 <Layout
@@ -56,10 +54,6 @@ Hutter-Prize lineage, reproduced at toy scale.
 | context_mixing order 0..0 (reference) | 4.7066 | $2.66\times10^{6}$ |
 | transformer (untrained, contrast) | 7.9786 | $3.48\times10^{9}$ |
 
-<HarnessPlot src={refPlot} alt="Reference bpb-vs-FLOP curve: context mixing vs an untrained transformer">
-  The blue dashed line is the **context-mixing reference (not a candidate)** order sweep; the orange
-  point is the untrained transformer contrast. Lower-left is better.
-</HarnessPlot>
 
 <Callout variant="caveat" title="two reference runs, don't conflate them">
 The [first-finding leaderboard](/experiments/first-finding-pareto)'s context-mixing reference
@@ -69,7 +63,7 @@ total FLOPs by coincidence (different stream length *and* max-order), so the bpb
 is faithful to its own run.
 </Callout>
 
-And the same data, re-rendered as the shared interactive chart — hover the order points, toggle the
+The order sweep as the shared interactive chart — hover (or tab to) the order points, toggle the
 untrained-transformer contrast:
 
 <figure class="figure">

@@ -5,8 +5,6 @@ title: First finding — Pareto-hollow
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import BpbFlopChart from "../../components/BpbFlopChart.astro";
-import HarnessPlot from "../../components/HarnessPlot.astro";
-import boardPlot from "../../assets/unified-leaderboard.png";
 import { firstFinding } from "../../data/curves";
 
 <Layout
@@ -46,16 +44,12 @@ FLOPs, scored as validation bits-per-byte vs **total** FLOPs (pretrain $+$ infer
 | transformer | $4\times10^{10}$ | $3.93\times10^{10}$ | 4.21 |
 | fast_weight | $4\times10^{10}$ | $3.94\times10^{10}$ | 4.40 |
 
-<HarnessPlot src={boardPlot} alt="Three-way leaderboard: transformer, fast_weight, and the context-mixing reference">
-  The three-series bpb-vs-total-FLOP leaderboard (regenerated on `master` from all three merged
-  models). The lone blue square at lower-left is the free context-mixing reference.
-</HarnessPlot>
-
-## The same plot, made interactive
+## The bpb-vs-FLOP curve
 
 The lesson only lands when you can see the free reference sitting *under* the neural runs. Toggle
-the series and hover the points — the blue reference (40&times;&ndash;2300&times; cheaper through 10¹⁰) is below **both** neural
-curves through $10^{10}$ FLOPs; the neural models overtake it only at $4\times10^{10}$:
+the series and hover (or tab to) the points — the blue reference (40&times;&ndash;2300&times;
+cheaper through 10¹⁰) is below **both** neural curves through $10^{10}$ FLOPs; the neural models
+overtake it only at $4\times10^{10}$:
 
 <figure class="figure">
   <BpbFlopChart
