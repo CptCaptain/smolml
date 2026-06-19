@@ -23,6 +23,11 @@ toolchain is **confined to `docs/learning/`** and never touches the research loo
 - "**Docs build stays green**" becomes a PR gate for any docs change.
 - Concepts get **reusable interactive components** (define `<PrequentialDemo/>` once, reuse with
   props) — the right primitive for a growing concept web, and the reason MDX beats raw HTML here.
+- **Constraint: the built site must open from `file://` with no server.** This rules out
+  ES-module island hydration (browsers block module scripts from a `file://` origin), so
+  interactivity is delivered as a single **classic** script (no imports/fetch) plus a post-build
+  step that **relativizes** every asset/link and **inlines CSS**. Astro/MDX stays the authoring
+  layer; `npm run build` emits a directly-openable `dist/`.
 
 ## Alternatives considered
 
