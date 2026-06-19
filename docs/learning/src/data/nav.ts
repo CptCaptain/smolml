@@ -54,6 +54,13 @@ export const concepts: NavItem[] = [
     blurb: "The PAQ/cmix reference ceiling: cheap order-k models + online mixing.",
     kicker: "CONCEPT 06",
   },
+  {
+    slug: "predictive-coding",
+    href: "/concepts/predictive-coding",
+    title: "Predictive coding & surprise-gating",
+    blurb: "Settle on the hard bytes: error-minimizing inference, gated by surprise.",
+    kicker: "CONCEPT 07",
+  },
 ];
 
 export const experiments: NavItem[] = [
@@ -91,6 +98,13 @@ export const experiments: NavItem[] = [
     title: "A.1 — fast-weight memory",
     blurb: "The maiden Source-(iv) candidate — mechanism sound, thesis unsupported.",
     kicker: "EXP A.1",
+  },
+  {
+    slug: "B.1-surprise-gated-pc-refinement",
+    href: "/experiments/B.1-surprise-gated-pc-refinement",
+    title: "B.1 — surprise-gated PC refinement",
+    blurb: "The (iv) gating lever is real; the PC-refinement mechanism is Pareto-hollow.",
+    kicker: "EXP B.1",
   },
   {
     slug: "first-finding-pareto",

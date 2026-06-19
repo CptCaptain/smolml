@@ -13,6 +13,7 @@ export type SeriesRole =
   | "fast_weight" // fast-weight hybrid (matplotlib tab:orange)
   | "transformer" // transformer baseline (matplotlib tab:green / orange in solo plot)
   | "free" // the free online unigram floor
+  | "pc_refine" // surprise-gated predictive-coding refinement (B.1, matplotlib tab:orange; site rose so it never reads as fast-weight)
   | "neutral";
 
 export interface CurvePoint {
@@ -179,3 +180,43 @@ export const freeUnigram: Series = {
 
 // The uninformed "no-model" anchor: uniform over 256 bytes = 8 bits/byte.
 export const NO_MODEL_BPB = 8.0;
+
+// ── B.1: surprise-gated predictive-coding refinement (synthetic text8 clone, 1200 B) ──
+// Source: experiments/B.1-surprise-gated-pc-refinement.md (the four-entrant table).
+// All four ran on the IDENTICAL 1200-byte prequential eval stream (seed 0, CPU).
+// The three pretrained entrants share a bit-identical frozen transformer core, so
+// they land at near-identical total FLOPs (~2.31e11) and are distinguished only on
+// the y-axis; context-mixing sits ~22,000× to the left. Each is a lone measured
+// point (not a budget sweep), so kind:"point". The gated−uniform matched-FLOP
+// lever (−0.0045 bpb) is below the resolution of a log-FLOP axis — it lives in the
+// page's result table, not the chart.
+export const surpriseGatedPc: Series[] = [
+  {
+    id: "transformer",
+    label: "transformer (core only)",
+    role: "transformer",
+    kind: "point",
+    points: [{ flops: 2.311e11, bpb: 4.1992, tag: "frozen core — cheapest correct predictor" }],
+  },
+  {
+    id: "pc_gated",
+    label: "pc_refine — gated (surprise)",
+    role: "pc_refine",
+    kind: "point",
+    points: [{ flops: 2.312e11, bpb: 4.2288, tag: "−0.0045 bpb vs uniform at matched FLOPs" }],
+  },
+  {
+    id: "pc_uniform",
+    label: "pc_refine — uniform K (control)",
+    role: "neutral",
+    kind: "point",
+    points: [{ flops: 2.312e11, bpb: 4.2333, tag: "fixed settling depth, same eval FLOPs" }],
+  },
+  {
+    id: "context_mixing",
+    label: "context-mixing reference",
+    role: "reference",
+    kind: "point",
+    points: [{ flops: 1.036e7, bpb: 4.4637, tag: "free, ~10⁷ FLOPs — the per-FLOP ceiling" }],
+  },
+];
