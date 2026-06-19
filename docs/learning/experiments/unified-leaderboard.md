@@ -2,12 +2,12 @@
 
 | rank | run | protocol | model | params | final FLOPs | final bpb | detail |
 | ---: | --- | --- | --- | ---: | ---: | ---: | --- |
-| 1 | transformer_b4e10 | prequential | transformer | 95,568 | 4.001e+10 | 4.1564 | stream=512B, pretrain=3.98e+10 |
-| 2 | fast_weight_b4e10 | prequential | fast_weight | 95,568 | 4.005e+10 | 4.3585 | stream=512B, pretrain=3.98e+10 |
-| 3 | transformer_b1e10 | prequential | transformer | 95,568 | 9.812e+09 | 4.6139 | stream=512B, pretrain=9.64e+09 |
-| 4 | fast_weight_b1e10 | prequential | fast_weight | 95,568 | 9.844e+09 | 4.7534 | stream=512B, pretrain=9.64e+09 |
-| 5 | context_mixing_reference | prequential | context_mixing | 0 | 4.283e+06 | 4.7779 | stream=512B, pretrain=0.00e+00 |
-| 6 | fast_weight_b2e9 | prequential | fast_weight | 95,568 | 2.133e+09 | 6.8241 | stream=512B, pretrain=1.93e+09 |
-| 7 | transformer_b2e9 | prequential | transformer | 95,568 | 2.101e+09 | 7.0550 | stream=512B, pretrain=1.93e+09 |
-| 8 | fast_weight_b0 | prequential | fast_weight | 95,568 | 2.052e+08 | 7.4095 | stream=512B, pretrain=0.00e+00 |
+| 1 | transformer_b4e10 | prequential | transformer | 95,568 | 3.933e+10 | 4.2059 | stream=512B, pretrain=3.92e+10 |
+| 2 | fast_weight_b4e10 | prequential | fast_weight | 95,568 | 3.936e+10 | 4.4017 | stream=512B, pretrain=3.92e+10 |
+| 3 | context_mixing_reference | prequential | context_mixing | 0 | 4.283e+06 | 4.7779 | stream=512B, pretrain=0.00e+00 |
+| 4 | fast_weight_b1e10 | prequential | fast_weight | 95,568 | 9.995e+09 | 5.9130 | stream=512B, pretrain=9.79e+09 |
+| 5 | transformer_b1e10 | prequential | transformer | 95,568 | 9.962e+09 | 6.0125 | stream=512B, pretrain=9.79e+09 |
+| 6 | fast_weight_b2e9 | prequential | fast_weight | 95,568 | 1.604e+09 | 7.3953 | stream=512B, pretrain=1.40e+09 |
+| 7 | fast_weight_b0 | prequential | fast_weight | 95,568 | 2.052e+08 | 7.4095 | stream=512B, pretrain=0.00e+00 |
+| 8 | transformer_b2e9 | prequential | transformer | 95,568 | 1.571e+09 | 7.6914 | stream=512B, pretrain=1.40e+09 |
 | 9 | transformer_b0 | prequential | transformer | 95,568 | 1.727e+08 | 8.0003 | stream=512B, pretrain=0.00e+00 |
