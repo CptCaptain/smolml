@@ -1,6 +1,8 @@
 # Task B.1 — Surprise-gated predictive-coding refinement (`pc_refine`)
 
-- Status: IN PROGRESS (config **c** / variant **α** this task; config **b** is the follow-up)
+- Status: DONE (config **c** / variant **α**) — gating lever real but mechanism Pareto-hollow on
+  the synthetic clone; config **b** / variant **β** gated on a real-enwik8 control. See the
+  experiment note `docs/learning/experiments/B.1-surprise-gated-pc-refinement.md`.
 - Branch: `task/B.1-surprise-gated-pc` (own PR, do not merge; human merges)
 - Depends on: 0.2 (prequential), 0.3 (context-mixing reference = the bar). Builds on A.1's
   hybrid template (`smolml/models/fast_weight.py`).
