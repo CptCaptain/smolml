@@ -135,7 +135,7 @@ export default function SourceIvScreen() {
         .siv-meter-fill.imp-low { background: #b89255; }
         .siv-meter-fill.imp-zero { background: var(--faint); }
         .siv-note { font-size: 0.82rem; color: var(--muted); margin: 0.2rem 0 0; }
-        .siv-empty { color: var(--faint); font-family: var(--font-mono); font-size: 0.82rem; }
+        .siv-empty { color: var(--muted); font-family: var(--font-mono); font-size: 0.82rem; }
         .siv-verdict { margin-top: 1rem; padding: 0.8rem 1rem; border-radius: var(--radius);
           border: 1px solid var(--line); font-size: 0.92rem; }
         .siv-verdict.v-scout { border-left: 3px solid var(--c-transformer); background: rgba(92,196,106,0.08); }

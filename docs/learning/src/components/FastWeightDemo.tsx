@@ -195,7 +195,7 @@ export default function FastWeightDemo() {
         .fw-top { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; }
         .fw-h { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.12em;
           text-transform: uppercase; color: var(--muted); margin: 0 0 0.6rem; }
-        .fw-dim { color: var(--faint); text-transform: none; letter-spacing: 0; }
+        .fw-dim { color: var(--muted); text-transform: none; letter-spacing: 0; }
         .fw-sub { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); margin: 0.7rem 0 0.4rem; }
         .fw-keys { display: flex; flex-wrap: wrap; gap: 0.4rem; }
         .fw-keys.inline { display: inline-flex; }
@@ -203,7 +203,7 @@ export default function FastWeightDemo() {
           font-size: 0.78rem; cursor: pointer; background: var(--ink-2); color: var(--paper-dim);
           border: 1px solid var(--line); border-radius: 6px; padding: 0.35rem 0.55rem; }
         .fw-key.sm { flex-direction: row; }
-        .fw-key-hint { font-size: 0.6rem; color: var(--faint); }
+        .fw-key-hint { font-size: 0.6rem; color: var(--muted); }
         .fw-key.on { border-color: var(--c-fast); color: #f0913e; }
         .fw-vals { display: flex; gap: 0.35rem; }
         .fw-val { font-family: var(--font-mono); width: 2rem; height: 2rem; cursor: pointer;

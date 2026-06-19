@@ -75,6 +75,11 @@ prose source — I keep them and author the interactive pages under `src/`.
 - **Honesty:** harness-produced plots are embedded via `HarnessPlot` (labelled "harness plot");
   reconstructed coordinates (e.g. 0.1's intermediate eval x-positions, which the notes don't report)
   are flagged in the chart caption **and** the `reconstructed` flag on the series.
+- **Accessibility (WCAG AA):** `--faint` (#6f6650, ~3:1 on the ink bg) is **decoration only**
+  (borders, gridlines, swatch fills) — never small text; use `--muted` (#9a8e76, ~5.7:1) or lighter
+  for any actual text. Interactive chart marks (`BpbFlopChart`) are keyboard-focusable
+  (`tabIndex`, `role="button"`, per-point `aria-label`, focus mirrors hover so the tooltip opens on
+  focus) with a visible focus ring — fixed once in the shared component, so all chart uses benefit.
 
 ## Pages (status: all built, build green)
 
@@ -123,3 +128,12 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   crossover now flips (wins through 10¹⁰, loses only at 4×10¹⁰). Added a "two reference runs"
   caveat to the context-mixing-reference page. Both flagged discrepancies marked resolved. Build
   green (13 pages).
+- **2026-06-19 (session 4 — cross-vendor review fixes, Codex APPROVE-WITH-FIXES):** (MAJOR 1) added
+  the 5 individual experiment pages to `ConceptMap` as a connector-bus of leaf nodes off the log
+  node — every experiment is now reachable from the map, not just the sidebar/cards. (MAJOR 2)
+  made `BpbFlopChart` marks keyboard-focusable (tabIndex/role/aria-label, focus mirrors hover,
+  visible focus ring) — once in the shared component. (MAJOR 3) routed all `--faint` *text* to
+  `--muted` for WCAG AA (`.fw-dim`, `.fw-key-hint`, `.siv-empty`, `.strm-ch.future`, nav/rail
+  labels); `--faint` is now decoration-only. (MINOR) removed the broken `check` npm script;
+  reworded first-finding's imprecise "1000× cheaper" to "40×–2300× cheaper through 10¹⁰". Build
+  green (13 pages); nothing changed outside docs/learning.

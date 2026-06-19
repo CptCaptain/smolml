@@ -20,4 +20,5 @@ export default defineConfig({
     }),
   },
   integrations: [preact(), mdx()],
+  base: './',
 });

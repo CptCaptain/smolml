@@ -203,8 +203,14 @@ export default function BpbFlopChart({
                 const r = s.kind === "point" ? 8 : 5;
                 return (
                   <g
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`${s.label}: ${p.bpb.toFixed(4)} bpb at ${p.flops.toExponential(2)} FLOPs${p.tag ? ` \u2014 ${p.tag}` : ""}`}
+                    class="chart-mark"
                     onMouseEnter={() => setHover({ sid: s.id, i })}
                     onMouseLeave={() => setHover(null)}
+                    onFocus={() => setHover({ sid: s.id, i })}
+                    onBlur={() => setHover(null)}
                     style={{ cursor: "pointer" }}
                   >
                     {/* generous invisible hit area */}
@@ -319,6 +325,10 @@ export default function BpbFlopChart({
         .chart { margin: 0; }
         .chart-svg { width: 100%; height: auto; display: block;
           font-family: "JetBrains Mono Variable", ui-monospace, monospace; }
+        .chart-mark { outline: none; }
+        .chart-mark:focus-visible rect, .chart-mark:focus-visible circle:last-of-type {
+          stroke: #fff7e8; stroke-width: 2.5; }
+        .chart-mark:focus-visible { outline: 2px solid #e8b54d; outline-offset: 2px; border-radius: 3px; }
         .grid { stroke: rgba(180,160,120,0.10); stroke-width: 1; }
         .axis { stroke: #5a5240; stroke-width: 1.3; }
         .tick { fill: #9a8e76; font-size: 13px; }

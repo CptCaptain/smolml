@@ -54,7 +54,7 @@ FLOPs, scored as validation bits-per-byte vs **total** FLOPs (pretrain $+$ infer
 ## The same plot, made interactive
 
 The lesson only lands when you can see the free reference sitting *under* the neural runs. Toggle
-the series and hover the points — the blue reference (1000&times; cheaper) is below **both** neural
+the series and hover the points — the blue reference (40&times;&ndash;2300&times; cheaper through 10¹⁰) is below **both** neural
 curves through $10^{10}$ FLOPs; the neural models overtake it only at $4\times10^{10}$:
 
 <figure class="figure">
@@ -84,8 +84,9 @@ and **loses** once the core is well-trained: +0.19 at b4e10. The memory helps a 
 a good one.
 
 But the win is **Pareto-hollow**: the free online context-mixing reference reaches 4.78 bpb for
-$\sim4.3\times10^{6}$ FLOPs — ~1000&times; cheaper than either neural model, and *lower bpb than
-both* at every budget through $10^{10}$ (where the neural models are still at 5.9&ndash;6.0). The
+$\sim4.3\times10^{6}$ FLOPs — **40&times;&ndash;2300&times; cheaper** than the neural runs through
+$10^{10}$, and *lower bpb than both* at every budget through $10^{10}$ (where the neural models are
+still at 5.9&ndash;6.0). The
 neural models overtake the free reference only at $4\times10^{10}$ — exactly the budget where
 `fast_weight` gives up its edge and loses to the plain transformer. So every `fast_weight` win over
 the transformer happens inside the region a free frequency model already dominates, and the

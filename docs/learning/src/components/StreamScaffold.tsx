@@ -103,7 +103,7 @@ export default function StreamScaffold({
           background: var(--ink); border: 1px solid var(--line); border-radius: var(--radius);
           padding: 0.7rem 0.8rem; line-height: 1.8; word-break: break-all; }
         .strm-ch.seen { color: var(--paper); }
-        .strm-ch.future { color: var(--faint); }
+        .strm-ch.future { color: var(--muted); }
         .strm-ch.cursor { color: #e8b54d; background: rgba(232,181,77,0.18); border-radius: 3px; padding: 0 1px; }
         .strm-main { display: grid; grid-template-columns: 1fr 13rem; gap: 1.2rem; margin-top: 1rem; }
         .strm-readout { border-left: 1px solid var(--line); padding-left: 1rem; }

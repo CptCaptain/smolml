@@ -46,6 +46,19 @@ const edges: Edge[] = [
   { from: "preq", to: "exp", dashed: true },
 ];
 
+// Experiment leaves: each individual experiment page, hung off the log node on a
+// connector "bus" so every experiment is reachable from the map too (no orphans).
+const LEAF_W = 168;
+const LEAF_Y = 602;
+const BUS_Y = 564;
+const expLeaves: Node[] = [
+  { id: "e01", x: 94, y: LEAF_Y, w: LEAF_W, label: "0.1 baseline smoke", href: "/experiments/0.1-baseline-harness-smoke" },
+  { id: "e02", x: 282, y: LEAF_Y, w: LEAF_W, label: "0.2 prequential", href: "/experiments/0.2-prequential-baseline" },
+  { id: "eref", x: 470, y: LEAF_Y, w: LEAF_W, label: "0.3 cmix reference", role: "reference", href: "/experiments/context-mixing-reference" },
+  { id: "ea1", x: 658, y: LEAF_Y, w: LEAF_W, label: "A.1 fast-weight", role: "fast_weight", href: "/experiments/A.1-fast-weight-memory" },
+  { id: "eff", x: 846, y: LEAF_Y, w: LEAF_W, label: "first finding", role: "accent", href: "/experiments/first-finding-pareto" },
+];
+
 function endpoints(a: Node, b: Node) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -60,7 +73,7 @@ function endpoints(a: Node, b: Node) {
 ---
 
 <figure class="cmap figure">
-  <svg viewBox="0 0 940 558" role="img" aria-label="Concept map of the smolml compendium" class="cmap-svg">
+  <svg viewBox="0 0 940 652" role="img" aria-label="Concept map of the smolml compendium" class="cmap-svg">
     <defs>
       <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0,0 L10,5 L0,10 z" fill="#6f6650"></path>
@@ -102,11 +115,28 @@ function endpoints(a: Node, b: Node) {
         );
       })
     }
+    {/* experiment-log bus: the log node indexes every individual experiment page */}
+    <line x1={byId.exp.x} y1={byId.exp.y + H / 2} x2={byId.exp.x} y2={BUS_Y} class="cmap-edge" />
+    <line x1={expLeaves[0].x} y1={BUS_Y} x2={expLeaves[expLeaves.length - 1].x} y2={BUS_Y} class="cmap-edge" />
+    {expLeaves.map((n) => (
+      <line x1={n.x} y1={BUS_Y} x2={n.x} y2={n.y - H / 2} class="cmap-edge" marker-end="url(#arrow)" />
+    ))}
+    {expLeaves.map((n) => (
+      <a href={n.href} aria-label={n.label}>
+        <g class={`cmap-node cmap-leaf role-${n.role ?? "default"}`}>
+          <rect x={n.x - n.w / 2} y={n.y - H / 2} width={n.w} height={H} rx="9" />
+          <text x={n.x} y={n.y + 4} text-anchor="middle">
+            {n.label}
+          </text>
+        </g>
+      </a>
+    ))}
   </svg>
   <figcaption class="figcaption">
-    The dependency spine: the goal flows into three pillars, which feed the prequential
-    protocol, the two mechanisms (the fast-weight candidate and the context-mixing reference),
-    and the experiment log. Every box is a page &mdash; click through.
+    The dependency spine: the goal flows into three pillars, which feed the prequential protocol and
+    the two mechanisms (the fast-weight candidate and the context-mixing reference) &mdash; all
+    indexed by the experiment log, with every individual experiment hung off it below. Every box is
+    a page &mdash; click through.
   </figcaption>
 </figure>
 
@@ -136,6 +166,10 @@ function endpoints(a: Node, b: Node) {
   .cmap-node text {
     fill: var(--paper);
     font-size: 12.5px;
+  }
+  .cmap-leaf text {
+    font-size: 11px;
+    fill: var(--paper-dim);
   }
   .role-reference rect {
     stroke: var(--c-reference);
