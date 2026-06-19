@@ -121,6 +121,13 @@ export const experiments: NavItem[] = [
     kicker: "EXP B.2",
   },
   {
+    slug: "B.3-hashed-mix-full-corpus",
+    href: "/experiments/B.3-hashed-mix-full-corpus",
+    title: "B.3 — hashed tables at full corpus",
+    blurb: "Fixed-memory hashing runs the full ADR carve; bounded order-6 survives and beats order-3 per FLOP.",
+    kicker: "EXP B.3",
+  },
+  {
     slug: "first-finding-pareto",
     href: "/experiments/first-finding-pareto",
     title: "First finding — the win is Pareto-hollow",

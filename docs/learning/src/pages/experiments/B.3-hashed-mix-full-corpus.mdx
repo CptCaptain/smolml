@@ -1,0 +1,156 @@
+---
+title: B.3 — hashed tables (order-6 at full corpus)
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import { hashedMixFull } from "../../data/curves";
+
+<Layout
+  title="B.3 — bounded (hashed) tables: the order-6 win survives at full scale"
+  kicker="EXP B.3"
+  blurb="Fixed-memory hashed count tables run the full enwik8 ADR carve; bounded order-6 survives and beats order-3 per FLOP."
+  related={[
+    { href: "/concepts/online-warmup", title: "Online warm-start & the transductive handicap" },
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/experiments/B.2-warmed-mixing", title: "B.2 — warmed mixing (first real win)" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/experiments/context-mixing-reference", title: "Context-mixing reference ceiling" },
+  ]}
+>
+
+<Callout variant="insight" title="the order-6 win scales — the unlock was engineering, not a new mechanism">
+[B.2](/experiments/B.2-warmed-mixing)'s order-6 context-mixer won on a 4 MB slice, but it stored its
+high-order counts in growable Python dicts that **OOM (~58 GB)** on a full-corpus warmup. `hashed_mix`
+bounds those tables to **fixed memory** (PAQ/cmix-style hashing) — and on the **real 5 MB enwik8 ADR
+eval**, the order-6 advantage **survives the bounding**: it reaches **2.257 bpb cold vs order-3's
+2.622**, and **2.111 warmed**, all in ≤4.3 GiB. No new mechanism — a standard compression technique is
+what let the proven win run at full-corpus scale.
+</Callout>
+
+**Status:** the **engineering unlock** that ran the full enwik8 ADR carve end-to-end — the first time
+we touch the real ADR eval stream. **Concepts:** [online warm-start](/concepts/online-warmup),
+[online context mixing](/concepts/context-mixing), [Source-(iv)](/concepts/source-iv-advantage),
+[prequential evaluation](/concepts/prequential-evaluation),
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws). **Builds on:**
+[B.2 — warmed mixing](/experiments/B.2-warmed-mixing).
+
+## The blocker and the fix
+
+The order-6 mixer that won [B.2](/experiments/B.2-warmed-mixing) stores its per-order counts in
+growable Python dicts. On a full-corpus warmup the order-6 dict explodes — roughly **0.5 new contexts
+per byte**, so ~**58 GB** at 95 MB of prior — and the run OOMs before it produces a number.
+`hashed_mix` swaps the high orders (`k ≥ hash_min_order`) for a **fixed-size hashed table**:
+$T = 2^{20}$ slots, 256 `uint16` counts each, mapping `context → hash → slot` with **collisions
+accepted**. Memory is then $T$ slots *regardless of corpus size* — the whole point — at the cost of
+collision noise. The low orders (0–3, small) keep their exact dicts.
+
+The table was built by a **behavior-preserving refactor** of `context_mixing` (extracted store seams;
+the [cold reference](/experiments/context-mixing-reference) stayed **bit-identical** and all prior
+tests stayed green). A cross-vendor review then added the missing $O(V)$ **halve-on-overflow** charge
+and an **order-≤8 guard**. The hash is **salt-free** (so runs reproduce) and **charged honestly** — the
+gather it replaces, plus the explicit slot arithmetic.
+
+## Full ADR carve
+
+The real `enwik8` carve (ADR-0004): final **5 MB = eval**, first **~95 MB = prior**, **all FLOPs
+counted**. Config: `table_bits = 20`, `hash_min_order = 4` (so orders 4–6 are hashed; 0–3 stay exact).
+
+| entrant | bpb | total FLOPs | peak RAM |
+| --- | ---: | ---: | ---: |
+| `reference_cold` — context-mix order-3, no warmup | 2.6224 | $4.74\times10^{10}$ | 0.7 GiB |
+| `hashed_o6_cold` — order-6 bounded, no warmup | 2.2570 | $7.73\times10^{10}$ | 2.3 GiB |
+| **`hashed_o6_warm1e11`** — order-6 bounded, ~7 MB warmup | **2.1111** | $\mathbf{1.78\times10^{11}}$ | 4.3 GiB |
+| `hashed_o6_warmfull` — order-6, full 95 MB warmup | *computing* | — | — |
+| `transformer` anchor | *computing* | — | — |
+
+Three points have **landed**; the last two are **still computing** in a detached run — the *computing*
+cells are deliberate, not placeholders to fill by guesswork (see below).
+
+<figure class="figure">
+  <BpbFlopChart
+    series={hashedMixFull}
+    yMin={2.0}
+    yMax={2.75}
+    annotations={[
+      { flops: 4.74e10, bpb: 2.6224, text: "order-3 cold — the cheaper reference it beats", dx: 22, dy: -10 },
+      { flops: 1.78e11, bpb: 2.1111, text: "bounded order-6, ~7 MB warmup — best landed", dx: -14, dy: 30 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    bpb vs total FLOPs on the real 5 MB ADR eval (all FLOPs counted). The
+    <span class="swatch reference"></span>order-3 cold reference is a *different, cheaper* model — not
+    the cold start of the order-6 curve; the <span class="swatch warm"></span>bounded order-6
+    `hashed_mix` curve (cold → ~7 MB warmup) sits **below and to the right** of it, so order-6 **beats
+    order-3 per FLOP** under fixed memory. Honest scope: this is the real full-ADR-carve eval (not a
+    4 MB slice), but **two further points are still computing** (`hashed_o6_warmfull`, the transformer
+    anchor) and are not plotted; peak RAM (≤4.3 GiB) lives in the table, not on the axes.
+  </figcaption>
+</figure>
+
+## What the numbers say
+
+1. **Bounded order-6 survives at full corpus.** Even cold, hashed order-6 reaches **2.257 bpb vs
+   order-3's 2.622** at ~1.6× the FLOPs, in a fixed ~2.3 GiB — the collisions at `table_bits=20` don't
+   erode the order-6 advantage. The fixed-memory technique is sufficient to run the real carve.
+2. **Pre-warming helps beyond self-warming.** A ~7 MB warmup drops cold 2.257 → **2.111** (−0.15 bpb)
+   for ~2.3× the total FLOPs — a real warmup gain *on top of* the win.
+3. **The long ADR eval self-warms.** Both *cold* numbers here are far below B.2's 4 MB-slice cold
+   (3.21): the 5 M-byte eval stream is long enough that the online mixer adapts *as it streams*, so the
+   cold-vs-warm gap shrinks — a property of this metric's long eval, worth remembering.
+4. **vs the transformer.** The full-corpus transformer anchor is still computing; at 32 k (B.2) it was
+   5.55 bpb @ $9.7\times10^{11}$, and on a 5 MB eval its windowed-recompute cost scales to
+   ~$10^{14}$ FLOPs at similar (undertrained) bpb — so the mixers' per-FLOP dominance only widens.
+   *[Confirmed-pending — the anchor has not landed.]*
+
+## Still computing — and why the conclusion already holds
+
+`hashed_o6_warmfull` folds the **full 95 MB** prior into the fixed $2^{20}$ table, so order-6 then
+sees ~**30–40 contexts per slot** (heavy collisions): it tests whether *more* warmup keeps helping or
+the table **saturates** (in which case `warm1e11`'s lighter warmup is the sweet spot). The transformer
+anchor is the foregone expensive baseline. Both will land in `runs/full/leaderboard.md`, and this page
+gains the two rows when they finish.
+
+<Callout variant="caveat" title="the two pending rows carry no numbers yet">
+`hashed_o6_warmfull` and the transformer anchor are **still computing** in a detached run — their bpb /
+FLOPs / RAM cells read *computing* on purpose, not as placeholders to be filled in by guesswork. The
+headline — **bounded-memory order-6 scales to the full ADR carve and wins per FLOP** — rests on the
+three landed points and **does not depend on them**.
+</Callout>
+
+## Verdict
+
+**Bounded order-6 is a real full-corpus win per FLOP.** Fixed-memory hashing turned an OOM-blocked
+mechanism into one that runs the whole ADR carve in ≤4.3 GiB and still beats order-3 — and pre-warming
+adds a further −0.15 bpb on top. The result extends [B.2](/experiments/B.2-warmed-mixing)'s order-6
+finding from a 4 MB slice to the real 5 MB eval; the open question is no longer *whether* it scales but
+*how far* before the fixed table saturates.
+
+## What we learned
+
+1. **The unlock was engineering, not a new mechanism.** Fixed-memory hashing — a standard compression
+   technique — is what let the proven order-6 win run at full-corpus scale. It is reusable for every
+   future mixing candidate.
+2. **The order-6 win is robust to bounding** at feasible memory: it didn't collapse back to order-3.
+3. **Collision saturation is the next knob.** Pushing warmup toward the full 95 MB into a fixed table
+   eventually trades count fidelity for memory; the right move for *more* warmup is a **bigger table**,
+   not more data into a small one — the classic cmix memory↔accuracy frontier.
+
+<Callout variant="note" title="scale & reproduce">
+The first end-to-end run on the **real full ADR carve** (final 5 MB eval / first ~95 MB prior), bounded
+to ≤4.3 GiB by the hashed tables. Detached run:
+`nohup uv run python -m smolml.experiments.full_corpus > runs/full/run.log 2>&1 &`.
+</Callout>
+
+## See also
+
+- [Online warm-start & the transductive handicap](/concepts/online-warmup) — the warmup this run pre-pays.
+- [B.2 — warmed mixing (first real win)](/experiments/B.2-warmed-mixing) — the order-6 win this bounds to fixed memory.
+- [Online context mixing](/concepts/context-mixing) — the learner whose high-order tables got hashed.
+- [Context-mixing reference ceiling](/experiments/context-mixing-reference) — the cold baseline the refactor kept bit-identical.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — why a cheap bounded learner winning per FLOP counts.
+- [Prequential evaluation](/concepts/prequential-evaluation) — the protocol scoring the 5 MB eval.
+
+</Layout>

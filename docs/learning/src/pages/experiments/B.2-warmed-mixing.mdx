@@ -14,6 +14,7 @@ import { warmedMixing, gatedMix } from "../../data/curves";
   related={[
     { href: "/concepts/online-warmup", title: "Online warm-start & the transductive handicap" },
     { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/experiments/B.3-hashed-mix-full-corpus", title: "B.3 — hashed tables at full corpus" },
     { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
     { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
     { href: "/experiments/context-mixing-reference", title: "Context-mixing reference ceiling" },
@@ -196,6 +197,7 @@ Phase 1: `uv run python -m smolml.experiments.warm_mix_enwik8`; Phase 2:
 ## See also
 
 - [Online warm-start & the transductive handicap](/concepts/online-warmup) — the mechanism and its math.
+- [B.3 — hashed tables at full corpus](/experiments/B.3-hashed-mix-full-corpus) — the engineering follow-on that bounds this order-6 win to fixed memory and scales it to the real 5 MB ADR eval.
 - [Online context mixing](/concepts/context-mixing) — the learner that gets warmed.
 - [Context-mixing reference ceiling](/experiments/context-mixing-reference) — the cold baseline this extends into a win.
 - [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win that counts, and the one warm-start earns.
