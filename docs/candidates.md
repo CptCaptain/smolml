@@ -27,7 +27,7 @@ baseline. Status: `idea` → `queued` → `running` → `beat-baseline` / `lost`
 | Mechanism | One-line idea | Why it might win per-FLOP | Status |
 |---|---|---|---|
 | Forward-Forward (Hinton 2022) | Two forward passes, local goodness objective | No backward pass; local, parallel | idea |
-| Predictive coding | Local error-driven updates toward equilibrium | Biologically-plausible, local | idea |
+| Predictive coding | Local error-driven updates; **surprise-gated settling** (B.1) | Spend settling only on hard bytes — more loss-reduction per FLOP | **tested (B.1): lever real, mechanism Pareto-hollow on synthetic; enwik8 control pending** |
 | Equilibrium propagation | Energy-based local learning | Single mechanism for inference + learning | idea |
 | Feedback alignment / target prop | Replace exact gradients with cheaper signals | Avoids weight transport; cheaper backward | idea |
 | Fast-weight programmers | Network writes its own fast weights | Schmidhuber's "learning to learn"; meta-efficiency | idea |
@@ -73,6 +73,15 @@ loss-reduction per FLOP). This both grounds the hunt and further falsifies the p
 Boundary RESOLVED: **hybrid / continual-learning models are the chosen direction.** Amortized
 pretraining is allowed; test-time adaptation is allowed *iff its FLOPs are counted*. Pure
 transductive compression is inspiration + a per-FLOP ceiling, not the target.
+
+### B.1 result — surprise-gated predictive-coding refinement (`pc_refine`)
+First Space-B fusion scouted (config c / variant α): a frozen core + a gradient-free PC module
+whose settling depth + online update are **surprise-gated**. Verdict: the (iv) *gating lever* is
+real and directional (gated −0.0045 bpb vs uniform at *matched* total FLOPs, allocation-only), but
+the mechanism is **Pareto-hollow** on the synthetic clone — it loses to the bare core (+0.034 bpb,
+more FLOPs) and is dominated per-FLOP by the context-mixing reference. Next gate before config
+(b)/variant β: a **real-enwik8** control where per-byte difficulty actually varies. See
+`docs/learning/experiments/B.1-surprise-gated-pc-refinement.md`.
 
 LOCKED (ADR 0004) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
 total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot

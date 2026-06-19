@@ -54,7 +54,7 @@ Only the chart takes data; the rest are self-contained.
 | `sourceiv` (`SourceIvScreen.astro`) | Toggle the (i)–(iv) sources a candidate claims → FLOP-impact bars + scout/park verdict. | _(none)_ |
 
 The shared **stream scaffold** and **chart** logic live as functions in `compendium.js` (rule of
-two: one chart routine for 6 chart instances; one stream scaffold for both stream demos).
+two: one chart routine for 8 chart instances; one stream scaffold for both stream demos).
 
 ### Presentational (`.astro`)
 
@@ -68,8 +68,9 @@ two: one chart routine for 6 chart instances; one stream scaffold for both strea
 
 ### Data modules
 
-- `src/data/curves.ts` — `Series` type + datasets `firstFinding`, `contextMixingReference`,
-  `prequentialBaseline`, `amortizedBaseline`, `freeUnigram`, constants. Provenance-commented.
+- `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`) + datasets `firstFinding`,
+  `contextMixingReference`, `prequentialBaseline`, `amortizedBaseline`, `freeUnigram`,
+  `surpriseGatedPc` (B.1), constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
 
 ## Style & convention decisions
@@ -77,13 +78,16 @@ two: one chart routine for 6 chart instances; one stream scaffold for both strea
 - **Aesthetic:** a research scout's logbook as an *instrument readout* — warm near-black "paper"
   with a faint graph-paper grid; Fraunces (display) + Newsreader (body) + JetBrains Mono (numbers).
   One amber UI accent. **Data role colors are fixed and semantic, matching the harness plots:**
-  context-mixing reference = blue, fast-weight = orange, transformer = green, free unigram = violet.
+  context-mixing reference = blue, fast-weight = orange, transformer = green, free unigram = violet,
+  predictive-coding refinement = rose (`--c-pc`; B.1 — the harness plots `pc_refine` in tab:orange,
+  but orange is reserved here for fast-weight, so PC got its own token + chart/map/swatch color and
+  never reads as the memory).
   This keeps the interactive re-renders visually honest against the embedded PNGs.
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (6 uses), `Pipeline` (3), `CardGrid` (2),
-  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 6 chart instances and
+- **Rule of two (factored shared viz):** `BpbFlopChart` (8 uses), `Pipeline` (5), `CardGrid` (2),
+  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 8 chart instances and
   one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
   - Wrap page body in `<Layout …>` via `import` + element, **not** the `layout:` frontmatter
@@ -111,11 +115,13 @@ two: one chart routine for 6 chart instances; one stream scaffold for both strea
 
 ## Pages (status: all built, build green)
 
-- **Concepts (6):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
-  prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing.
-- **Experiments (5 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
-  context-mixing-reference (embeds `context-mixing-reference.png`), A.1-fast-weight-memory,
-  first-finding-pareto (embeds `unified-leaderboard.png` + interactive 3-way chart).
+- **Concepts (7):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
+  prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
+  predictive-coding.
+- **Experiments (6 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
+  context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
+  first-finding-pareto. Each renders the shared interactive `BpbFlopChart` (one plot per page;
+  harness PNGs stay as artifacts under `experiments/`, not embedded — session 6).
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
 
 ## Flagged for researchers (RESOLVED 2026-06-19 by Main)
@@ -191,3 +197,22 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   node edge (no kinks, no bowing into boxes); arrowheads (`orient="auto-start-reverse"`) and dashed
   feedback/log edges preserved; the experiment bus left orthogonal. Build green; verified from
   `file://` (zero console errors) and screenshotted the landing map to confirm clean curves.
+- **2026-06-19 (session 8 — B.1 surprise-gated PC pages):** authored two pages from the researcher
+  notes — concept `predictive-coding` (intuition → free-energy/settling KaTeX → worked example →
+  surprise-gating; `Pipeline` loop + reused interactive `BpbFlopChart`) and experiment
+  `B.1-surprise-gated-pc-refinement` (mirrors A.1: status/bet/setup/FLOP-honesty incl. the
+  cross-vendor undercharge fix/4-way result table/verdict/learnings). Added a new semantic data role
+  `pc_refine` + `--c-pc` rose token across `curves.ts`, `compendium.js` `ROLE_COLOR`, `global.css`
+  (swatch) and `ConceptMap` (`role-pc`) so PC never reads as fast-weight's orange; added the
+  `surpriseGatedPc` dataset (4 entrants on the identical 1200 B stream). Wired both into `nav.ts`
+  (CONCEPT 07, EXP B.1), the `ConceptMap` (new `Predictive coding` node off source-iv + dashed leg to
+  the log; B.1 leaf on the experiment bus, re-spaced to 6 leaves at `LEAF_W=150`), the experiments
+  index (auto via nav), and reciprocal See-also links on source-iv / prequential / loss-per-flop. No
+  new component factored — rule of two not triggered (reused `BpbFlopChart` / `Callout` / `Pipeline`
+  / `ConceptMap` / `CardGrid`); `BpbFlopChart` now 8 uses, `Pipeline` 5. Build green (15 pages);
+  verified from `file://` (zero console errors): map shows the rose PC node + B.1 leaf with no
+  overlaps, the B.1 chart renders all 4 marks/legend/annotations, KaTeX renders, no `\u` leaks, all
+  cross-links resolve. **Viz note:** the gated−uniform matched-FLOP lever (−0.0045 bpb) is sub-pixel
+  on a log-FLOP axis (the three pretrained entrants share x), so the chart carries the macro Pareto
+  story and the result table carries the lever (flagged in both captions). Researcher note found
+  internally consistent — no science flagged.

@@ -17,6 +17,28 @@ on top. Each entry should link the concept pages it touches and embed/link the b
 
 ## Entries
 
+## 2026-06-19 — Surprise-gated predictive-coding refinement (B.1)  [status: done]
+
+- **Concepts:** [Predictive coding](../concepts/predictive-coding.md),
+  [Source-(iv) advantage](../concepts/source-iv-advantage.md),
+  [Prequential evaluation](../concepts/prequential-evaluation.md),
+  [Loss per FLOP](../concepts/loss-per-flop-and-scaling-laws.md)
+- **Hypothesis:** gating predictive-coding *settling depth* by per-byte surprise concentrates
+  loss-reducing compute on hard bytes → lower bpb at matched total FLOPs (pure Source-(iv)).
+- **Setup:** frozen `transformer` core (2e11 pretrain) + a gradient-free logit-correction PC
+  module (variant α); `uniform` vs `surprise` settling differ in *only* the gate (matched mean
+  K). Baselines on the same 1200-byte synthetic carve: the bare core and the context-mixing
+  reference.
+- **Result:** gated **4.2288** vs uniform **4.2333** bpb at identical 2.312e11 FLOPs (−0.0045,
+  allocation only); both *worse* than the bare core (**4.1992**) and dominated per-FLOP by
+  context-mixing (**4.4637** @ 1.0e7). [Full note + curve.](B.1-surprise-gated-pc-refinement.md)
+- **Verdict:** the (iv) *gating lever* is real and directional, but the PC-refinement *mechanism*
+  is Pareto-hollow on this data (lost per FLOP).
+- **What we learned:** the gate is degenerate until the core is trained enough to be
+  *differentially* confident, and order-0 synthetic data starves the lever — a real-enwik8
+  control is the needed next test. The A.1 reflex holds: beating the uniform variant ≠ good per
+  FLOP.
+
 ## 2026-06-18 — Context-mixing reference ceiling  [status: done]
 
 - **Concepts:** [Online context mixing](../concepts/context-mixing.md),
