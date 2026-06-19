@@ -1,0 +1,97 @@
+---
+title: Fast-weight associative memory
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import Pipeline from "../../components/Pipeline.astro";
+import FastWeightDemo from "../../components/FastWeightDemo.tsx";
+
+<Layout
+  title="Fast-weight associative memory"
+  kicker="CONCEPT 05"
+  blurb="The Phase-A maiden candidate: make memorization nearly free."
+  related={[
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/experiments/A.1-fast-weight-memory", title: "A.1 — fast-weight memory" },
+  ]}
+>
+
+## Intuition
+
+A language model spends a surprising amount of capacity (and gradient compute) **memorizing**
+literal patterns — names, rare words, exact phrasings. Gradient descent is an expensive way to
+memorize: many steps to push a fact into weights. What if memorization were nearly **free**?
+
+A **fast-weight associative memory** stores key&rarr;value associations with a single instant write
+(a Hebbian outer product, or a modern-Hopfield update) — **no gradient, $O(1)$ per item**. Pair it
+with a small **slow core** trained by gradients to do the *generalization*. The division of labor:
+the slow core learns the regularities; the fast memory soaks up the rote bits the moment it sees them.
+
+<Pipeline
+  steps={[
+    { label: "context", sub: "bytes so far" },
+    { label: "slow core", sub: "gradient-trained", accent: "transformer" },
+    { label: "fast memory", sub: "instant Hebbian write/read", accent: "fast_weight" },
+    { label: "combine", sub: "gated mix \u2192 p(next)", accent: "accent" },
+  ]}
+  feedback="after reveal: write (key\u2192byte) into memory in O(1) \u2014 its adaptation FLOPs are counted"
+/>
+
+## The math
+
+The store is a $d \times V$ matrix $M$ (here $V = 256$ byte values). Writing the association
+$(\text{key } k,\ \text{byte } b)$ is one rank-1 outer product with exponential decay $\gamma$:
+
+$$M \leftarrow \gamma\, M + k \otimes e_b$$
+
+Reading is a single matvec — the query key against the store, turned into a distribution:
+
+$$r = k^\top M, \qquad p_{\text{mem}} = \mathrm{softmax}(\beta\, r)$$
+
+No backward pass touches $M$. The combine step mixes this with the core's distribution under a
+confidence gate (see [A.1](/experiments/A.1-fast-weight-memory) for why additive logits blow up).
+
+## Poke the memory
+
+<FastWeightDemo client:visible />
+
+## The Source-(iv) story
+
+If rote memorization moves from "expensive gradient steps" to "one cheap write," then the gradient
+FLOPs all go toward *generalization* &rarr; **more loss-reduction per FLOP**. That is a genuine
+[Source-(iv)](/concepts/source-iv-advantage) claim, not a parallelism trick. And because the memory
+writes online as it reads, it is a true **continual learner** — its adaptation FLOPs are counted
+under [prequential evaluation](/concepts/prequential-evaluation), so it cannot cheat.
+
+## Worked example (the bet)
+
+A stream hits a rare proper noun `"Zelenograd"` for the first time. A pure gradient model is
+surprised at every early occurrence until many updates pass (high bpb on those bytes). The hybrid
+writes "context&rarr;next byte" into fast memory on first sight; the *next* occurrence is partly
+predicted by an $O(1)$ read &rarr; lower bpb on repeats, with almost no extra FLOPs.
+
+<Callout variant="caveat">
+That is the **bet**, not a result. The empirical question Phase A answers: does it buy enough
+bpb-per-FLOP to beat the transformer baseline on the curve? The honest answer —
+[measured in A.1](/experiments/A.1-fast-weight-memory) — is **no on this data**: the win is
+Pareto-hollow and the memory needs literal repetition the corpus does not contain.
+</Callout>
+
+## Open design questions
+
+- **Addressing:** exact key match vs. soft/attention-style retrieval (modern Hopfield)? (A.1 found
+  raw hidden states are near-parallel; keying on the *centered* residual is load-bearing.)
+- **Capacity & eviction:** a fixed-size store — what gets forgotten? (Superposition + exponential decay.)
+- **FLOP fairness:** how are memory reads/writes counted against the core? (Dense $2dV$ each, no
+  one-hot shortcut.)
+
+## See also
+
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the claim this candidate makes.
+- [Prequential evaluation](/concepts/prequential-evaluation) — where its adaptation FLOPs get charged.
+- [A.1 — fast-weight memory](/experiments/A.1-fast-weight-memory) — the experiment that tested the bet.
+
+</Layout>
