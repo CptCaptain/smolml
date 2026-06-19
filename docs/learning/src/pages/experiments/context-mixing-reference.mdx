@@ -15,7 +15,9 @@ import { contextMixingReference } from "../../data/curves";
     { href: "/concepts/context-mixing", title: "Online context mixing" },
     { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
     { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/online-warmup", title: "Online warm-start" },
     { href: "/experiments/first-finding-pareto", title: "First finding — Pareto-hollow" },
+    { href: "/experiments/B.2-warmed-mixing", title: "B.2 — warmed mixing" },
   ]}
 >
 
@@ -97,5 +99,7 @@ $<10^{7}$ FLOPs; the untrained transformer needs $3.5\times10^{9}$ FLOPs to mana
 
 - [Online context mixing](/concepts/context-mixing) — the mechanism, with a live order-k mixer.
 - [First finding](/experiments/first-finding-pareto) — where this reference Pareto-dominates the neural runs.
+- [Online warm-start](/concepts/online-warmup) — the cheap fix for this reference's cold-start handicap.
+- [Experiment B.2 — warmed mixing](/experiments/B.2-warmed-mixing) — this same reference, warmed, beats the transformer per FLOP.
 
 </Layout>

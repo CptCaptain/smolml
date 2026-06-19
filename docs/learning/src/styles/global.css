@@ -40,6 +40,7 @@
   --c-transformer: #5cc46a;
   --c-free: #cf8be0;
   --c-pc: #e0738a;
+  --c-warm: #e0654d;
   --c-neutral: #9a8e76;
 
   /* type */
@@ -325,6 +326,9 @@ blockquote {
 }
 .swatch.pc_refine {
   background: var(--c-pc);
+}
+.swatch.warm {
+  background: var(--c-warm);
 }
 
 /* responsive */

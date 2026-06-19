@@ -15,7 +15,9 @@ import PrequentialStream from "../../components/PrequentialStream.astro";
     { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
     { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
     { href: "/concepts/fast-weight-memory", title: "Fast-weight memory" },
+    { href: "/concepts/online-warmup", title: "Online warm-start" },
     { href: "/experiments/0.2-prequential-baseline", title: "0.2 — prequential baseline" },
+    { href: "/experiments/B.2-warmed-mixing", title: "B.2 — warmed mixing" },
   ]}
 >
 
@@ -86,5 +88,7 @@ is held to.
 - [Source-(iv) advantage](/concepts/source-iv-advantage) — which wins on this curve actually count.
 - [Fast-weight memory](/concepts/fast-weight-memory) — a candidate that spends adaptation FLOPs online.
 - [Predictive coding & surprise-gating](/concepts/predictive-coding) — a gate that must read surprise *before* the reveal.
+- [Online warm-start](/concepts/online-warmup) — the third strategy this protocol permits, between amortized and cold-transductive.
+- [Experiment B.2 — warmed mixing](/experiments/B.2-warmed-mixing) — warm-start counted honestly on the curve, and it wins.
 
 </Layout>

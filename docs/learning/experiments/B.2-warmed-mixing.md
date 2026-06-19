@@ -61,8 +61,13 @@ only where it pays). At `min_order == max_order` it is bit-identical to fixed-or
 
 | entrant | bpb | total FLOPs | eval FLOPs |
 | --- | ---: | ---: | ---: |
+| fixed warm_mix order-2 | 3.2482 | 1.229e9 | 2.44e8 |
+| fixed warm_mix order-3 | 2.8805 | 1.304e9 | 3.10e8 |
+| fixed warm_mix order-4 | 2.7096 | 1.351e9 | 3.73e8 |
+| fixed warm_mix order-5 | 2.6666 | 1.422e9 | 4.32e8 |
 | fixed warm_mix order-6 | **2.6552** | 1.477e9 | 4.87e8 |
 | gated_mix thr=0.1 (near-full) | 2.6698 | 1.570e9 | 6.11e8 |
+| gated_mix thr=0.3 | 2.7037 | 1.538e9 | 5.62e8 |
 | gated_mix thr=0.5 | 2.8274 | 1.463e9 | 4.90e8 |
 | gated_mix thr=0.7 (aggressive) | 3.1179 | 1.335e9 | 3.75e8 |
 
