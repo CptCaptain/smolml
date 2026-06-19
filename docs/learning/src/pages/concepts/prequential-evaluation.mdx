@@ -5,7 +5,7 @@ title: Prequential evaluation
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import Pipeline from "../../components/Pipeline.astro";
-import PrequentialStream from "../../components/PrequentialStream.tsx";
+import PrequentialStream from "../../components/PrequentialStream.astro";
 
 <Layout
   title="Prequential evaluation"
@@ -43,7 +43,7 @@ length, tying back to [compression = prediction](/concepts/compression-equals-pr
 
 ## Watch the loop
 
-<PrequentialStream client:visible />
+<PrequentialStream />
 
 ## Our protocol (ADR 0004)
 

@@ -7,32 +7,54 @@ prose source — I keep them and author the interactive pages under `src/`.
 
 ## How the site is wired
 
-- **Stack:** Astro 6 + `@astrojs/mdx` + `@astrojs/preact` (lightweight islands). KaTeX via
-  `remark-math` + `rehype-katex`, configured through the Astro 6 `markdown.processor = unified({…})`
-  API (MDX inherits it). Fonts self-hosted via `@fontsource-variable` (no runtime CDN).
-- **Build:** `npm run build` from `docs/learning/` is the PR gate. `npm run dev` to author.
-- **Routing:** file-based under `src/pages/`. Concept pages → `/concepts/<slug>`, experiments →
-  `/experiments/<slug>`, log index → `/experiments`.
-- **Single source of truth for numbers:** `src/data/curves.ts`. Every chart reads from it; numbers
-  are transcribed verbatim from the experiment notes with provenance comments. Never hardcode a
-  datapoint in a page.
-- **Sitemap:** `src/data/nav.ts` drives the sidebar, the landing card grids, and prev/next — so
-  adding a page in one place keeps everything in sync and orphan-free.
+**HARD CONSTRAINT (user requirement): the built site must work opened directly from disk
+(`file://`), with no server.** That shapes the whole toolchain below.
+
+- **Stack:** Astro 6 + `@astrojs/mdx` (no UI framework — see interactivity). KaTeX via `remark-math`
+  + `rehype-katex` through the Astro 6 `markdown.processor = unified({…})` API (MDX inherits it).
+  Fonts self-hosted via `@fontsource-variable` (no runtime CDN).
+- **Interactivity = classic scripts, not islands.** Browsers block ES-module (`type="module"`)
+  hydration from a `file://` origin, so there are **no framework islands**. Every interactive viz
+  is a thin `data-widget` marker (`src/components/*.astro`) mounted by ONE classic script,
+  `public/js/compendium.js` (vanilla JS, no imports/no fetch, included once via `Layout`). State
+  lives in a closure; interaction re-renders via `innerHTML` with listeners **delegated on the
+  widget root** (so they survive re-render); the chart updates its tooltip in place to preserve
+  keyboard focus.
+- **CSS inlined** (`build.inlineStylesheets: "always"`) — no external stylesheet, so no CSS 404 on
+  `file://`. Widget CSS lives in `global.css` (global scope, because runtime-built DOM never
+  receives Astro-scoped styles).
+- **Relative paths:** `scripts/relativize.mjs` (chained in the `build` script) rewrites every
+  absolute asset/link and `url(/…)` in the built HTML to a page-relative path; links built at
+  runtime by `compendium.js` use the `data-root` prefix that `Layout` sets per page. So `file://`
+  resolves everything (no server root, no directory-index magic).
+- **Build:** `npm run build` (= `astro build && node scripts/relativize.mjs`) is the PR gate.
+  `npm run dev` to author (relative paths work over http too).
+- **Single source of truth for numbers:** `src/data/curves.ts` (provenance-commented). The chart
+  marker serializes the relevant dataset into an inline JSON `<script>` the widget reads.
+- **Sitemap:** `src/data/nav.ts` drives sidebar, landing cards, and prev/next — orphan-free.
+- **To view the build:** open `dist/index.html` (or any `dist/**/index.html`) directly in a
+  browser. No server.
 
 ## Component inventory
 
-### Interactive islands (Preact, `.tsx`, hydrated `client:visible`)
+### Interactive widgets (vanilla, mounted by `public/js/compendium.js`)
 
-| component | purpose | key props |
+Each is a thin `.astro` marker `<div data-widget="…">`; the chart also embeds an inline JSON
+`<script>` of its build-time data. `compendium.js` auto-mounts every `[data-widget]` on load.
+Only the chart takes data; the rest are self-contained.
+
+| widget (`data-widget`) | purpose | data passed |
 | --- | --- | --- |
-| `BpbFlopChart` | **The recurring viz.** bpb (y, linear) vs total FLOPs (x, log10). Hover points, toggle series, optional budget/no-model lines + annotations. Role colors match the matplotlib plots. | `series: Series[]`, `budgetLine?`, `budgetLabel?`, `noModelLine?`, `annotations?: {flops,bpb,text,dx?,dy?}[]`, `yMin?`, `yMax?` |
-| `StreamScaffold` | Shared chrome for predict-before-reveal demos: stream tape, running-bpb readout + per-byte sparkline, Step/Play/Reset transport + the play timer. Demos supply their prediction panel as children. | `stream`, `pos`, `cumBits`, `history`, `playing`, `onStep`, `onPlay`, `onReset`, `children`, `caption?`, `barColor?`, `stepMs?` |
-| `PrequentialStream` | Live online order-0/1 byte model; predicts before reveal, pays −log₂p, adapts. Built on `StreamScaffold`. | _(none)_ |
-| `ContextMixingDemo` | Order-0/1/2 specialists + online logistic mixing weights that learn by SGD; watch weights re-allocate. Built on `StreamScaffold`. | _(none)_ |
-| `CodeLengthDemo` | Slider for p(true byte) → −log₂p bits, with the cost curve and the 8-bit "no model" line. | _(none)_ |
-| `ScalingCalculator` | C = 6·N·D arithmetic with N/D log-sliders, hardware, wall-clock, GPT-3 preset. | _(none)_ |
-| `FastWeightDemo` | Associative memory: outer-product write, matvec read, decay/forgetting, live d×V heatmap, crosstalk on similar keys. | _(none)_ |
-| `SourceIvScreen` | Toggle the (i)–(iv) sources a candidate claims → per-source FLOP-impact bars + scout/park verdict. | _(none)_ |
+| `chart` (`BpbFlopChart.astro`) | **The recurring viz.** bpb (y, linear) vs total FLOPs (x, log10). Hover/keyboard-focus points (tooltip in place, focus preserved), toggle series, optional budget/no-model lines + annotations. Role colors match the matplotlib plots. | JSON: `series`, `budgetLine?`, `budgetLabel?`, `noModelLine?`, `annotations?`, `yMin?`, `yMax?` |
+| `prequential` (`PrequentialStream.astro`) | Live online order-0/1 byte model; predict-before-reveal, pays −log₂p, adapts. Shares the stream scaffold (tape/readout/sparkline/transport) inside `compendium.js`. | _(none)_ |
+| `contextmixing` (`ContextMixingDemo.astro`) | Order-0/1/2 specialists + online logistic mixing weights (SGD); shares the stream scaffold. | _(none)_ |
+| `codelength` (`CodeLengthDemo.astro`) | Slider for p(true byte) → −log₂p bits, cost curve + 8-bit "no model" line. | _(none)_ |
+| `scaling` (`ScalingCalculator.astro`) | C = 6·N·D arithmetic with N/D log-sliders, hardware, wall-clock, GPT-3 preset. | _(none)_ |
+| `fastweight` (`FastWeightDemo.astro`) | Associative memory: outer-product write, matvec read, decay/forgetting, live d×V heatmap, crosstalk on similar keys. | _(none)_ |
+| `sourceiv` (`SourceIvScreen.astro`) | Toggle the (i)–(iv) sources a candidate claims → FLOP-impact bars + scout/park verdict. | _(none)_ |
+
+The shared **stream scaffold** and **chart** logic live as functions in `compendium.js` (rule of
+two: one chart routine for 6 chart instances; one stream scaffold for both stream demos).
 
 ### Presentational (`.astro`)
 
@@ -137,3 +159,15 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   labels); `--faint` is now decoration-only. (MINOR) removed the broken `check` npm script;
   reworded first-finding's imprecise "1000× cheaper" to "40×–2300× cheaper through 10¹⁰". Build
   green (13 pages); nothing changed outside docs/learning.
+- **2026-06-19 (session 5 — file:// re-platform, no server):** new hard requirement: the build must
+  work opened directly from disk. ES-module island hydration is blocked from `file://`, so I
+  removed `@astrojs/preact`/`preact` and the island system entirely and re-implemented all 7
+  interactive widgets as one **classic vanilla script** `public/js/compendium.js` (no
+  imports/fetch), auto-mounting `data-widget` markers (the former `.tsx` islands became thin
+  `.astro` markers; their CSS moved to `global.css`). Set `build.inlineStylesheets:"always"` (no
+  CSS 404s), added `scripts/relativize.mjs` (chained into `build`) to rewrite every absolute
+  asset/link/`url()` to page-relative, and a `data-root` prefix on `<html>` for links the widget
+  script builds at runtime. Verified from `file://` in a headless browser: index + a concept page +
+  first-finding load fully styled, sidebar/map links navigate, every widget renders **and** responds
+  (slider, stream step, legend toggle, fast-weight recall, source-iv verdict), both harness plots
+  load, math renders, **zero console errors / no ERR_FILE_NOT_FOUND**. Build green (13 pages).

@@ -5,7 +5,7 @@ title: Online context mixing
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import Pipeline from "../../components/Pipeline.astro";
-import ContextMixingDemo from "../../components/ContextMixingDemo.tsx";
+import ContextMixingDemo from "../../components/ContextMixingDemo.astro";
 
 <Layout
   title="Online context mixing"
@@ -71,7 +71,7 @@ prediction is already a little better. That is the entire learning algorithm.
 
 ## Run the mixer
 
-<ContextMixingDemo client:visible />
+<ContextMixingDemo />
 
 <Pipeline
   steps={[

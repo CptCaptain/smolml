@@ -5,7 +5,7 @@ title: Compression = prediction
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import Pipeline from "../../components/Pipeline.astro";
-import CodeLengthDemo from "../../components/CodeLengthDemo.tsx";
+import CodeLengthDemo from "../../components/CodeLengthDemo.astro";
 
 <Layout
   title="Compression = prediction"
@@ -55,7 +55,7 @@ The uninformed anchor is **8 bpb** — a uniform guess over 256 byte values. Eve
 
 ## Poke it
 
-<CodeLengthDemo client:visible />
+<CodeLengthDemo />
 
 ## Worked example
 

@@ -4,7 +4,7 @@ title: First finding — Pareto-hollow
 
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
-import BpbFlopChart from "../../components/BpbFlopChart.tsx";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
 import HarnessPlot from "../../components/HarnessPlot.astro";
 import boardPlot from "../../assets/unified-leaderboard.png";
 import { firstFinding } from "../../data/curves";
@@ -59,7 +59,6 @@ curves through $10^{10}$ FLOPs; the neural models overtake it only at $4\times10
 
 <figure class="figure">
   <BpbFlopChart
-    client:visible
     series={firstFinding}
     noModelLine={true}
     yMin={4.0}

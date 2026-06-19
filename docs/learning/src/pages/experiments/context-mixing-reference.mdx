@@ -4,7 +4,7 @@ title: Context-mixing reference ceiling
 
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
-import BpbFlopChart from "../../components/BpbFlopChart.tsx";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
 import HarnessPlot from "../../components/HarnessPlot.astro";
 import refPlot from "../../assets/context-mixing-reference.png";
 import { contextMixingReference } from "../../data/curves";
@@ -73,7 +73,7 @@ And the same data, re-rendered as the shared interactive chart — hover the ord
 untrained-transformer contrast:
 
 <figure class="figure">
-  <BpbFlopChart client:visible series={contextMixingReference} noModelLine={true} yMin={3.9} yMax={8.3} />
+  <BpbFlopChart series={contextMixingReference} noModelLine={true} yMin={3.9} yMax={8.3} />
   <figcaption class="figcaption">
     Adding orders walks the frontier <em>down</em> (4.71 &rarr; 4.17 bpb as per-byte FLOPs roughly
     triple), while the untrained transformer sits at $\approx$8.0 bpb spending $\sim$500&times; more

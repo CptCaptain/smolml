@@ -4,8 +4,8 @@ title: Loss-per-FLOP & scaling laws
 
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
-import ScalingCalculator from "../../components/ScalingCalculator.tsx";
-import BpbFlopChart from "../../components/BpbFlopChart.tsx";
+import ScalingCalculator from "../../components/ScalingCalculator.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
 import { prequentialBaseline } from "../../data/curves";
 
 <Layout
@@ -45,7 +45,7 @@ and the reason this project hunts for a *mechanism* that learns more per FLOP, n
 
 ## Do the arithmetic yourself
 
-<ScalingCalculator client:visible />
+<ScalingCalculator />
 
 ## Why we measure *per FLOP*
 
@@ -59,7 +59,6 @@ project's own transformer baseline, spending more compute and getting steadily l
 
 <figure class="figure">
   <BpbFlopChart
-    client:visible
     series={prequentialBaseline}
     noModelLine={true}
     yMin={3.8}

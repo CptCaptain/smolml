@@ -4,8 +4,8 @@ title: 0.2 — prequential baseline
 
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
-import BpbFlopChart from "../../components/BpbFlopChart.tsx";
-import PrequentialStream from "../../components/PrequentialStream.tsx";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import PrequentialStream from "../../components/PrequentialStream.astro";
 import { prequentialBaseline } from "../../data/curves";
 
 <Layout
@@ -34,7 +34,7 @@ pretrain on the prior corpus to a budget, then **frozen** prediction over the ev
 
 ## The loop, byte by byte
 
-<PrequentialStream client:visible />
+<PrequentialStream />
 
 ## Setup
 
@@ -58,7 +58,6 @@ pretrain on the prior corpus to a budget, then **frozen** prediction over the ev
 
 <figure class="figure">
   <BpbFlopChart
-    client:visible
     series={prequentialBaseline}
     noModelLine={true}
     yMin={3.8}
