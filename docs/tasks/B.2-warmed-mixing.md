@@ -75,15 +75,52 @@ A committed runner producing, on **one identical real-enwik8 carve**:
 Plot bpb-vs-**total**-FLOP; a win = warm_mix strictly below/left of the transformer and extending the
 reference frontier. Regenerate the leaderboard into a dedicated `runs/b2/`.
 
-## Phase 2 — bold layer on the warmed backbone (staged; design after Phase 1 lands)
+## Phase 1 outcome (landed) + the reframed bar
 
-With warm_mix as the verified Tier-0 backbone and the real-corpus bar established, build the bold
-(iv) layer the user asked for — **both** directions, designed against the *real* bar:
-- **A — surprise cascade:** warmed mixer carries the predictable mass; an expensive *learned* tier
-  fires only on residual-surprise bytes and learns from them. The dominant cost stays the cheap
-  warmed tier; expensive FLOPs concentrate on the high-bit minority (the structural fix for B.1).
-- **C — entropy-gated growth:** grow context orders / experts on the warmed mixer only where
-  residual conditional-entropy stays high.
-Real enwik8 is where these levers can actually bite (rich per-byte difficulty variation), unlike the
-order-0 synthetic clone that starved B.1. Detailed design + acceptance to be written when Phase 1
-results are in (do not pre-build).
+`warm_mix` on real enwik8 (4 MB slice, 32 k eval) **strictly dominates the transformer per FLOP**:
+2.7700 bpb @ 1.03e10 vs the transformer's 5.5453 @ 9.71e11 (~94× fewer FLOPs), warmup monotonic
+(cold 3.21 → warm@1e10 2.77). So the bar for the bold layer is **no longer the transformer — it is
+fixed-order `warm_mix` itself**.
+
+Order-curve probe (warmed @1e9, real enwik8): bpb falls with depth to ~order-6 then plateaus —
+order-2 3.248, order-3 2.881, order-4 2.710, order-5 2.667, **order-6 2.655**, order-8 2.664. Deep
+context pays on real text (it *hurt* on synthetic). But the mixer pays **all K orders on every
+byte**, while the high orders earn bits only on the minority with deep recurring context. That
+inefficiency is the (iv) lever — and it **fuses A and C**.
+
+## Phase 2 — `gated_mix`: gated order escalation on the warmed backbone (the A∩C fusion)
+
+`@register_model("gated_mix") class GatedMix(WarmMix)`. Holds orders `0..K_max` (warmed), but per
+byte evaluates them **cheapest-first and stops escalating** once the running mix is confident
+enough (entropy / `1 − max p` below a threshold) or no higher *active* context exists — charging
+FLOPs for **only the orders actually evaluated**. This is simultaneously **A** (the expensive
+compute = high-order models, fired only on high-surprise bytes) and **C** (an order is "grown into"
+the mix only where its residual-entropy contribution justifies the spend).
+
+- **(iv) dynamic:** mixing one more order costs a fixed ~`O(V)` FLOPs/byte and buys `ΔH_d` bits (the
+  conditional-entropy drop at depth `d`); escalate only while `ΔH_d` is likely > 0 (proxied by base
+  surprise + context activity). Mean evaluated depth ≪ `K_max` on easy bytes ⇒ near-order-`K_max`
+  bpb at a fraction of fixed-order FLOPs.
+- **Bar to beat:** the fixed-order `warm_mix` bpb-vs-FLOP curve above. A win = `gated_mix` sits
+  strictly below/left of it (e.g. order-6 bpb ≈ 2.655 at ~order-2/3 FLOP cost). "Same bpb at fewer
+  FLOPs" is a genuine per-FLOP win here.
+- **Gate is pre-reveal** (uses the partial-mix prediction's entropy, never the true byte); the gate
+  arithmetic and every evaluated order's stretch/mix/Laplace/update are charged via `smolml.flops`;
+  the per-byte charge is dynamic (orders evaluated), summed by the harness — no compute hides.
+- **Harness:** subclass `WarmMix`, override `step` (escalation loop + per-order charge) and
+  `_flop_breakdown` for the evaluated-orders cost; inherit warmup + handoff. Zero harness changes.
+- **Honest risk (critics' warning):** the mixer's soft weights already down-weight dead orders, so
+  the gain may be mostly **FLOP savings at ~equal bpb** rather than lower bpb. That is still a
+  per-FLOP win; report it as such, and report the realized mean evaluated depth.
+
+**A-as-neural-cascade is deprioritized:** on real enwik8 the transformer is so FLOP-inefficient that
+`warm_mix` dominates it, so escalating to a *neural* tier loses per-FLOP — the high-order context
+models are the better "expensive tier." (Revisit only if a cheap learned tier captures structure the
+mixer cannot, e.g. long-range/positional.)
+
+### Acceptance (Phase 2)
+
+Gates green; `tests/test_gated_mix.py` (gate pre-reveal/no-leakage; per-byte charge == evaluated
+orders, hand-checked; a degenerate threshold ⇒ identical to fixed-order `warm_mix`; reproducible);
+real-enwik8 run plotting `gated_mix` against the fixed-order `warm_mix` curve + reporting mean
+evaluated depth and the per-FLOP verdict (honest, even if it's only FLOP savings).
