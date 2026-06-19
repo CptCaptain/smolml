@@ -15,6 +15,7 @@ from smolml.models.registry import (
     register_model,
 )
 from smolml.models.transformer import Transformer, TransformerConfig
+from smolml.models.warm_mix import WarmMix
 
 __all__ = [
     "FastWeightConfig",
@@ -26,6 +27,7 @@ __all__ = [
     "PCRefineConfig",
     "Transformer",
     "TransformerConfig",
+    "WarmMix",
     "build_model",
     "get_model",
     "list_models",
