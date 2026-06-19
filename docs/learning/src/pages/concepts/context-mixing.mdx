@@ -1,0 +1,131 @@
+---
+title: Online context mixing
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import Pipeline from "../../components/Pipeline.astro";
+import ContextMixingDemo from "../../components/ContextMixingDemo.tsx";
+
+<Layout
+  title="Online context mixing"
+  kicker="CONCEPT 06"
+  blurb="The PAQ/cmix reference ceiling: cheap order-k models + online logistic mixing."
+  related={[
+    { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/experiments/context-mixing-reference", title: "Context-mixing reference ceiling" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — Pareto-hollow" },
+  ]}
+>
+
+<Callout variant="warning" title="a reference, not a candidate">
+This page describes a **yardstick** — the bpb-per-FLOP that single-pass online learning can reach —
+**not** an entrant in the search. It tells us what a real candidate should try to approach.
+</Callout>
+
+## Intuition
+
+Our metric *is* the [Hutter Prize](http://prize.hutter1.net): bits-per-byte on `enwik8`. And the
+best results there are **not** trained transformers — they are **online context-mixing**
+compressors (PAQ / cmix / nncp). Their recipe is almost embarrassingly simple:
+
+1. Keep a **handful of cheap specialists**, each a different "if you only looked at *this* much
+   context, what comes next?" model — order-0 (global byte frequency), order-1 (given the last
+   byte), order-2, order-3 (given the last 2&ndash;3 bytes).
+2. **Mix** their predictions into one distribution.
+3. Learn the **mixing weights online**, in a single streaming pass — no pretraining, no backprop
+   through a deep net. Every byte: predict, get graded, nudge the weights, fold the byte into the
+   counts, move on.
+
+Because it learns entirely while reading
+([transductive](/concepts/prequential-evaluation)), it is a pure expression of
+[Source-(iv)](/concepts/source-iv-advantage): *lots of loss-reduction per FLOP*. It carries **zero
+pretrained parameters** and still reaches far lower bpb than an untrained transformer at a tiny
+fraction of the compute.
+
+## The math
+
+**Each specialist** is a smoothed conditional frequency table. For order-$k$, with the last $k$
+bytes as context, let $c_k[b]$ be how many times byte $b$ has followed that context. Add-$\alpha$
+(Laplace) smoothing turns counts into a probability ($V = 256$):
+
+$$p_k[b] = \frac{c_k[b] + \alpha}{\sum_{b'} c_k[b'] + \alpha V}$$
+
+An unseen context (all-zero counts) gives the **uniform** distribution — the specialist abstains.
+
+**Logistic mixing.** Stretch each prediction into log-space, take a weighted sum, and squash back
+with softmax — a weighted *product of experts*:
+
+$$s_k[b] = \log p_k[b], \qquad z[b] = \sum_k w_k\, s_k[b], \qquad P[b] = \mathrm{softmax}(z)[b]$$
+
+**Online weight learning.** The mixer is one-layer multinomial logistic regression on the features
+$s_k$. After byte $y$ is revealed, take one SGD step on the cross-entropy $L = -\log P[y]$. The
+softmax-CE gradient is clean and hand-checkable:
+
+$$\frac{\partial L}{\partial w_k} = \sum_b \big(P[b] - \mathbb{1}\{b = y\}\big)\, s_k[b], \qquad w_k \leftarrow w_k - \eta\, \frac{\partial L}{\partial w_k}$$
+
+Then the byte is folded into every order-$k$ count table ($c_k[y]\mathrel{+}=1$), so the next
+prediction is already a little better. That is the entire learning algorithm.
+
+## Run the mixer
+
+<ContextMixingDemo client:visible />
+
+<Pipeline
+  steps={[
+    { label: "recent bytes", sub: "context" },
+    { label: "order-k counts", sub: "smoothed p_k", accent: "reference" },
+    { label: "stretch + mix", sub: "z = \u03a3 w_k log p_k" },
+    { label: "softmax", sub: "P(next byte)", accent: "accent" },
+  ]}
+  feedback="after reveal: SGD step on w + counts[y] += 1 (single online pass)"
+/>
+
+## FLOP honesty
+
+This mechanism's dominant compute is **not** matmuls — it is **table lookups, count updates, and
+the logistic mix/update**, all $O(K \cdot V)$ per byte. The shared FLOP counter omits elementwise
+work for the transformer *only because matmuls dominate there*; that omission is **conditional**.
+So every per-byte operation here is charged through the non-matmul `pointwise` / `gather`
+primitives, and each step charges **exactly the branches it actually runs** — not a constant
+per-byte estimate (which would over-charge early bytes and abstaining specialists).
+
+<Callout variant="caveat">
+With $K = 4$ predictors and $V = 256$, a fully-warmed byte costs $\approx 9.5\text{k}$ FLOPs —
+small, but **counted to the FLOP**. Leaving it uncharged would let the reference look artificially
+free; the whole point of the primitives is that it does not.
+</Callout>
+
+## Worked example
+
+Two specialists, a 2-symbol alphabet, weights $w = [0.5, 0.5]$, stretched inputs (already
+$\log p$) $s = [[1, 3], [5, 7]]$.
+
+- Mix: $z = 0.5\cdot[1,3] + 0.5\cdot[5,7] = [3, 5]$.
+- Squash: $P = \mathrm{softmax}([3,5]) = [e^{-2}, 1]/(1 + e^{-2}) \approx [0.119, 0.881]$.
+
+The true byte is $0$. The error is $P - \text{onehot}(0) = [-0.881, 0.881]$, so the gradient per
+specialist is $g_k = \sum_b \text{err}[b]\cdot s_k[b]$:
+
+$$g_0 = (-0.881)(1) + (0.881)(3) = 1.76, \qquad g_1 = (-0.881)(5) + (0.881)(7) = 1.76$$
+
+With $\eta = 0.1$: $w \leftarrow [0.5, 0.5] - 0.1\cdot[1.76, 1.76] = [0.324, 0.324]$. Both weights
+shrink because both specialists put more mass on byte $1$ than the truth warranted — the mixer
+learns to trust sharp-but-wrong inputs less.
+
+## What the curve says
+
+On the bundled English sample, adding orders walks the bpb-vs-FLOP frontier *down*
+(4.71 &rarr; 4.17 bpb as the per-byte FLOPs roughly triple) while an untrained transformer sits at
+$\approx 8.0$ bpb spending **$\sim$450&times; more** compute. That gap is the ceiling a candidate
+is chasing — see the [context-mixing reference experiment](/experiments/context-mixing-reference).
+
+## See also
+
+- [Compression = prediction](/concepts/compression-equals-prediction) — why a compressor *is* a predictor.
+- [Prequential evaluation](/concepts/prequential-evaluation) — the single-pass protocol this lives in.
+- [First finding](/experiments/first-finding-pareto) — where this free reference Pareto-dominates the neural runs.
+
+</Layout>
