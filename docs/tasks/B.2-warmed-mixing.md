@@ -121,6 +121,6 @@ mixer cannot, e.g. long-range/positional.)
 ### Acceptance (Phase 2)
 
 Gates green; `tests/test_gated_mix.py` (gate pre-reveal/no-leakage; per-byte charge == evaluated
-orders, hand-checked; a degenerate threshold ⇒ identical to fixed-order `warm_mix`; reproducible);
+orders, hand-checked; `min_order == max_order` ⇒ bit-identical to fixed-order `warm_mix`; reproducible);
 real-enwik8 run plotting `gated_mix` against the fixed-order `warm_mix` curve + reporting mean
 evaluated depth and the per-FLOP verdict (honest, even if it's only FLOP savings).
