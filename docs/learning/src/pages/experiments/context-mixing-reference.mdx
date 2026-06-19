@@ -1,0 +1,99 @@
+---
+title: Context-mixing reference ceiling
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.tsx";
+import HarnessPlot from "../../components/HarnessPlot.astro";
+import refPlot from "../../assets/context-mixing-reference.png";
+import { contextMixingReference } from "../../data/curves";
+
+<Layout
+  title="Context-mixing reference ceiling"
+  kicker="EXP 0.3"
+  blurb="The free single-pass bpb-per-FLOP yardstick a candidate must approach."
+  related={[
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — Pareto-hollow" },
+  ]}
+>
+
+<Callout variant="warning" title="a reference, not a candidate">
+This does not "enter" the search; it marks the bpb-per-FLOP **ceiling** that single-pass online
+learning reaches, so a candidate has a target to approach. "Beat-baseline / lost" does not apply to
+a yardstick.
+</Callout>
+
+**Status:** done (2026-06-18). **Concepts:** [online context mixing](/concepts/context-mixing),
+[prequential evaluation](/concepts/prequential-evaluation),
+[Source-(iv)](/concepts/source-iv-advantage),
+[compression = prediction](/concepts/compression-equals-prediction).
+
+## Hypothesis
+
+A handful of order-$k$ byte models mixed by online-learned logistic weights (zero pretraining)
+should reach far lower bpb than an *untrained* transformer at a tiny fraction of the FLOPs — the
+Hutter-Prize lineage, reproduced at toy scale.
+
+## Setup
+
+- `model=context_mixing`, prequential / total-FLOP protocol, **zero pretrain** (transductive).
+- Corpus: bundled English `sample` (offline), final **800 bytes** as the eval stream.
+- Sweep `max_order` $\in \{0,1,2,3\}$; contrast $=$ one untrained (`pretrain_budget=0`) transformer
+  (d=32, L=2, ctx=64) on the same stream. Seed 0, CPU.
+- All per-byte compute charged via the non-matmul `pointwise` / `gather` primitives.
+
+## Result
+
+| run | bpb | total FLOPs |
+| --- | ---: | ---: |
+| context_mixing order 0..3 (reference) | **4.1733** | $7.02\times10^{6}$ |
+| context_mixing order 0..2 (reference) | 4.2284 | $5.74\times10^{6}$ |
+| context_mixing order 0..1 (reference) | 4.3922 | $4.28\times10^{6}$ |
+| context_mixing order 0..0 (reference) | 4.7066 | $2.66\times10^{6}$ |
+| transformer (untrained, contrast) | 7.9786 | $3.48\times10^{9}$ |
+
+<HarnessPlot src={refPlot} alt="Reference bpb-vs-FLOP curve: context mixing vs an untrained transformer">
+  The blue dashed line is the **context-mixing reference (not a candidate)** order sweep; the orange
+  point is the untrained transformer contrast. Lower-left is better.
+</HarnessPlot>
+
+And the same data, re-rendered as the shared interactive chart — hover the order points, toggle the
+untrained-transformer contrast:
+
+<figure class="figure">
+  <BpbFlopChart client:visible series={contextMixingReference} noModelLine={true} yMin={3.9} yMax={8.3} />
+  <figcaption class="figcaption">
+    Adding orders walks the frontier <em>down</em> (4.71 &rarr; 4.17 bpb as per-byte FLOPs roughly
+    triple), while the untrained transformer sits at $\approx$8.0 bpb spending $\sim$500&times; more
+    compute. That gap is the ceiling a candidate is chasing.
+  </figcaption>
+</figure>
+
+## Verdict
+
+Reference ceiling established. Single-pass online mixing reaches $\approx$4.17 bpb for
+$<10^{7}$ FLOPs; the untrained transformer needs $3.5\times10^{9}$ FLOPs to manage $\approx$8.0 bpb.
+
+## What we learned
+
+- **The non-matmul FLOP primitives matter.** The reference's per-byte cost (order-3 averages
+  $\sim$8.8k FLOPs/byte, steady-state $\sim$9.5k) is real, charged work — and charged *exactly* for
+  the branches each step runs, not a constant over-estimate.
+- **Corpus shape, not just model.** On this real-English sample higher orders genuinely help
+  (bigram/trigram structure); on the synthetic `text8` clone, whose letters are i.i.d. within
+  words, orders $>0$ add $\sim$nothing — an honest reminder that the curve's shape is a property of
+  the corpus.
+- **A trained transformer would beat this bpb**, but only by spending orders of magnitude more
+  pretraining FLOPs — exactly the per-FLOP gap a [Source-(iv)](/concepts/source-iv-advantage)
+  candidate is meant to close.
+
+## See also
+
+- [Online context mixing](/concepts/context-mixing) — the mechanism, with a live order-k mixer.
+- [First finding](/experiments/first-finding-pareto) — where this reference Pareto-dominates the neural runs.
+
+</Layout>

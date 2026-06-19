@@ -1,0 +1,38 @@
+---
+import { Image } from "astro:assets";
+// Embed a harness-produced plot (matplotlib PNG) with a clearly-labelled caption.
+// The image is imported and optimized by Astro; the caption marks it as a
+// harness artifact (vs. the interactive re-renders), per the quality bar.
+interface Props {
+  src: ImageMetadata;
+  alt: string;
+}
+const { src, alt } = Astro.props;
+---
+
+<figure class="figure harness">
+  <Image src={src} alt={alt} />
+  <figcaption class="figcaption">
+    <span class="harness-tag">harness plot</span>
+    <slot />
+  </figcaption>
+</figure>
+
+<style>
+  .harness :global(img) {
+    background: #fff;
+  }
+  .harness-tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #16130e;
+    background: var(--accent-deep);
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+  }
+</style>

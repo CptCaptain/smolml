@@ -1,0 +1,54 @@
+---
+title: Experiment log
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import CardGrid from "../../components/CardGrid.astro";
+import { experiments } from "../../data/nav";
+
+export const entries = experiments.filter((e) => e.slug !== "index");
+
+<Layout
+  title="Experiment log"
+  kicker="LOG"
+  blurb="What we tried, the curves, and what we learned — failures included, they're the data."
+  related={[
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/", title: "Concept map" },
+  ]}
+>
+
+One entry per experiment. **Failures are first-class data** — logged as carefully as wins. Each
+entry links the concept pages it touches and embeds (or re-renders) the bpb-vs-FLOP plot.
+
+<CardGrid items={entries} />
+
+<Callout variant="insight" title="the arc so far">
+The harness wired up (0.1), switched to the real prequential metric (0.2), established a free
+single-pass **reference ceiling** (context mixing), then ran the maiden Source-(iv) candidate
+(A.1). The [first finding](/experiments/first-finding-pareto) is the punchline: the candidate's win
+over the baseline is **Pareto-hollow** — a free frequency model dominates exactly where it "wins."
+</Callout>
+
+## The entry template
+
+Every entry answers the same questions, so they stay comparable:
+
+```
+## YYYY-MM-DD — <short title>   [status: planned | running | done]
+- Concepts: [link], [link]
+- Hypothesis: what we expect to move, and why (the Source-(iv) story).
+- Setup: model/config, prior-corpus usage, total-FLOP budget(s), seed.
+- Result: bpb-vs-FLOP curve (plot) + the headline number vs. baseline.
+- Verdict: beat-baseline / lost / inconclusive.
+- What we learned: the actual insight, including anything that surprised us.
+```
+
+## See also
+
+- [Prequential evaluation](/concepts/prequential-evaluation) — the protocol every entry is scored under.
+- [First finding — Pareto-hollow](/experiments/first-finding-pareto) — the methodological lesson worth internalizing.
+
+</Layout>

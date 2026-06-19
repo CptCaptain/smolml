@@ -164,5 +164,16 @@ export const amortizedBaseline: Series[] = [
   },
 ];
 
+// The free online unigram floor (A.1): predict proportional to Laplace counts,
+// then increment, scored prequentially on the same 512 B clone tail.
+// Source: experiments/A.1-fast-weight-memory.md (~1.3×10⁵ FLOPs, 5.33 bpb).
+export const freeUnigram: Series = {
+  id: "free_unigram",
+  label: "free online unigram (floor)",
+  role: "free",
+  kind: "point",
+  points: [{ flops: 1.3e5, bpb: 5.33, tag: "~10⁵ FLOPs \u2014 the honest floor" }],
+};
+
 // The uninformed "no-model" anchor: uniform over 256 bytes = 8 bits/byte.
 export const NO_MODEL_BPB = 8.0;

@@ -1,0 +1,150 @@
+---
+title: A.1 — fast-weight memory
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.tsx";
+import { firstFinding, freeUnigram } from "../../data/curves";
+
+<Layout
+  title="A.1 — fast-weight associative memory"
+  kicker="EXP A.1"
+  blurb="The maiden Source-(iv) candidate: mechanism sound, the thesis NOT supported on this data."
+  related={[
+    { href: "/concepts/fast-weight-memory", title: "Fast-weight memory" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — Pareto-hollow" },
+  ]}
+>
+
+<Callout variant="warning" title="status: mechanism sound, thesis unsupported">
+The per-total-FLOP win over the transformer is real and reproducible but **Pareto-hollow** — a free
+online unigram dominates both models at exactly the budgets where the memory helps, and the memory
+*hurts* once the core is good (confirmed on a real `enwik8` carve). The lesson is the honest
+accounting, not the absolute bpb.
+</Callout>
+
+## The bet (and why it fails here)
+
+Gradient descent is an expensive way to **memorize**. A
+[fast-weight associative memory](/concepts/fast-weight-memory) memorizes with a single
+gradient-free outer-product write — $O(1)$, no backward pass. The bet: hand rote memorization to
+the cheap memory, let the gradient core do generalization, and the gradient FLOPs buy more
+loss-reduction per FLOP — a real [Source-(iv)](/concepts/source-iv-advantage) claim.
+
+**Measured, the bet does not hold on this corpus.** Three facts kill it:
+
+1. **No literal repetition to monetize.** The 512-byte clone eval stream has **0 repeated 6-grams**
+   and **0 repeated 8-grams** (only 4 repeated 4-grams). Nothing for a rote memorizer to recall.
+2. **No division of labor.** Gate weight and recall accuracy are essentially identical whether the
+   core is trained ($10^{10}$) or untrained: gate mean $a$ $=$ **0.254 vs 0.255**, recall@1 $=$
+   **10.8% vs 11.2%**. The memory does the same weak thing regardless of core quality.
+3. **At budget 0 there are zero gradient FLOPs to "free."** Yet the memory still "wins" there —
+   because it is acting as a fixed weak always-on predictor, not as a memory freeing the budget.
+
+So the observed crossover is fully explained by **"a weak always-on frequency-like predictor helps
+a bad core and hurts a good one"** — not by free memorization.
+
+## Result — against the Pareto frontier (offline clone)
+
+Cumulative prequential bpb vs total FLOPs. Cores are bit-identical to the transformer baseline at
+each budget; the only difference is the memory. The free online unigram (≈$1.3\times10^{5}$ FLOPs,
+5.33 bpb) is the honest floor:
+
+| pretrain budget | transformer / bpb | fast-weight / bpb | Δ bpb | beats free unigram (5.33)? |
+| --- | ---: | ---: | ---: | --- |
+| 0 | $1.73\times10^{8}$ / 8.0003 | $2.05\times10^{8}$ / 7.4095 | −0.59 (fw) | **no** (both ≫ 5.33) |
+| $2\times10^{9}$ | $1.57\times10^{9}$ / 7.6914 | $1.60\times10^{9}$ / 7.3953 | −0.30 (fw) | **no** (both > 5.33) |
+| $10^{10}$ | $9.96\times10^{9}$ / 6.0125 | $1.00\times10^{10}$ / 5.9130 | −0.10 (fw) | **no** (both > 5.33) |
+| $4\times10^{10}$ | $3.93\times10^{10}$ / 4.2059 | $3.94\times10^{10}$ / 4.4017 | +0.20 (tr) | yes — and **memory loses here** |
+
+<figure class="figure">
+  <BpbFlopChart
+    client:visible
+    series={[firstFinding[1], firstFinding[2], freeUnigram]}
+    noModelLine={true}
+    yMin={4.0}
+    yMax={8.3}
+    annotations={[{ flops: 1.3e5, bpb: 5.33, text: "free unigram dominates the win regime", dx: 16, dy: -8 }]}
+  />
+  <figcaption class="figcaption">
+    Fast-weight (orange) beats the transformer (green) at low budgets and loses at high — but the
+    free unigram (violet) sits below both until $\sim10^{10}$ FLOPs. The memory adds value only
+    where a trivial free baseline already dominates, and subtracts it in the only regime where the
+    core is worth running.
+  </figcaption>
+</figure>
+
+## The crossover is a real effect, not seed noise (A1F3)
+
+Paired-difference Δ $=$ (fast-weight − transformer) over **24 i.i.d. 512-byte streams** with the
+core fixed per budget:
+
+| budget | Δ (mean ± sd) | SE | wins (fw&lt;tr) | \|mean\|/SE |
+| --- | ---: | ---: | :---: | ---: |
+| 0 | −0.5397 ± 0.0830 | 0.0169 | 24/24 | ~32 |
+| $10^{10}$ | −0.0806 ± 0.0404 | 0.0082 | 22/24 | ~9.8 |
+| $4\times10^{10}$ | +0.2416 ± 0.0394 | 0.0081 | 0/24 | ~30 |
+
+Both the low-budget win and the high-budget loss are ~10–30 SE from zero and reproduce across
+streams — a small but robust effect.
+
+## External validity (A1F6)
+
+**(a) Real `enwik8` carve** — the project's first real-data point. Pretrain on a ~1 MB real prior
+slice; prequential-eval the final **2 KB** of real text (**294 repeated 6-grams** of 2043
+positions, vs 0 in the clone). Free unigram on this tail $=$ 5.17 bpb.
+
+| budget | transformer | fast-weight | Δ |
+| --- | ---: | ---: | ---: |
+| 0 | 7.9996 | 7.0321 | −0.97 (fw) |
+| $10^{10}$ | 6.3864 | 6.1150 | −0.27 (fw) |
+| $4\times10^{10}$ | **4.9137** | 5.5014 | **+0.59 (tr)** |
+
+The high-budget loss is **worse on real data**: at $4\times10^{10}$ the memory drags a competent
+real-text core (4.91) to 5.50 — *below* the free unigram (5.17). A trained transformer already
+memorizes `enwik8`'s repeats better than the crude store, which then only injects crosstalk.
+
+**(b) Repeat-density sweep** (synthetic, the *good* $4\times10^{10}$ core). A good core flips from
+net-negative to net-positive only once repetition is **very dense** (motif period ~96–128, i.e.
+~75–80% of 6-grams recurring) — denser than real byte-level corpora repeat.
+
+| motif period | repeated 6-grams | transformer | fast-weight | Δ |
+| ---: | ---: | ---: | ---: | ---: |
+| 512 (none) | 0 | 4.196 | 4.438 | +0.24 |
+| 256 | 251 | 4.121 | 4.307 | +0.19 |
+| 128 | 379 | 4.075 | 4.128 | +0.05 |
+| 96 | 411 | 4.093 | 3.976 | **−0.12** |
+| 64 | 443 | 3.986 | 3.711 | −0.28 |
+| 32 | 475 | 3.974 | 3.342 | −0.63 |
+
+## What we learned
+
+- **"Free memorization" needs literal repetition the data must contain.** On a non-repetitive
+  corpus the memory degenerates to a weak always-on predictor — the tell is gate/recall stats being
+  identical trained-vs-untrained (no division of labor occurred).
+- **The honest competitor is a free online unigram, not the transformer.** Beating a
+  badly-under-trained transformer is not a Source-(iv) result when a $\sim10^{5}$-FLOP unigram beats
+  both. Every candidate from here is plotted against that floor.
+- **A good core is the memory's enemy, on real data too.** Once the transformer learns the
+  structure, the crude store only adds crosstalk (the `enwik8` loss of +0.59 exceeds the clone's +0.24).
+- **Anisotropy & bounded mixing are real engineering, but they buy robustness, not a win.** Keying
+  on the *centered* residual makes recall possible (raw hidden states are near-parallel, adjacent
+  cosine ≈ 1.000); confidence-gated probability mixing keeps a wrong recall from exploding the bpb —
+  but neither manufactures loss-reduction the data doesn't afford.
+
+<Callout variant="insight">
+Do not read the low-budget transformer win as a Source-(iv) result. The win is **Pareto-hollow**
+(the free unigram dominates the win regime) and **data-gated** (0 repeated n-grams here). That is
+the [first finding](/experiments/first-finding-pareto).
+</Callout>
+
+## See also
+
+- [Fast-weight memory](/concepts/fast-weight-memory) — the mechanism, with a live read/write demo.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the claim this candidate was held to.
+- [First finding — Pareto-hollow](/experiments/first-finding-pareto) — the three-way leaderboard and the lesson.
+
+</Layout>
