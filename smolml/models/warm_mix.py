@@ -125,6 +125,5 @@ class WarmMix(ContextMixing):
         cache, so this copy is bit-identical to the cold reference's initial state.
         """
         warm = self._ensure_warm()
-        tables = [{ctx: counts.copy() for ctx, counts in table.items()} for table in warm.tables]
-        cache = _MixerState(tables=tables, weights=warm.weights.copy())
+        cache = _MixerState(tables=self._copy_tables(warm.tables), weights=warm.weights.copy())
         return DecodeState(tokens=[], cache=cache)
