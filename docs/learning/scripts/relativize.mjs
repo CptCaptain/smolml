@@ -14,6 +14,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { posix } from "node:path";
+import { existsSync, statSync } from "node:fs";
 
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 
@@ -40,9 +41,18 @@ function toRelative(absUrl, fromDir) {
     target = "index.html";
   } else {
     const stripped = pathPart.replace(/^\/+/, "").replace(/\/+$/, "");
-    const last = stripped.split("/").pop() ?? "";
-    // A filename with an extension is an asset; otherwise it's a page route.
-    target = last.includes(".") ? stripped : `${stripped}/index.html`;
+    // Resolve against the real build output: a directory route maps to its
+    // index.html (file:// has no directory-index resolution). Avoids the
+    // "looks like a file" trap for routes containing dots (e.g. `0.1-…`, `A.1-…`).
+    const absTarget = join(DIST, ...stripped.split("/"));
+    if (existsSync(absTarget) && statSync(absTarget).isFile()) {
+      target = stripped;
+    } else if (existsSync(join(absTarget, "index.html"))) {
+      target = `${stripped}/index.html`;
+    } else {
+      const last = stripped.split("/").pop() ?? "";
+      target = /\.[a-z0-9]+$/i.test(last) ? stripped : `${stripped}/index.html`;
+    }
   }
 
   let rel = posix.relative(fromDir, target);
