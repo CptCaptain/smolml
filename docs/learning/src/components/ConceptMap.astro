@@ -1,0 +1,160 @@
+---
+// The index concept map: a hand-laid top-down DAG of the compendium, with
+// clickable nodes. Replaces the source mermaid graph with a styled, on-brand
+// SVG so the landing page is the navigational spine (no orphan pages).
+type Role = "accent" | "reference" | "fast_weight" | "transformer";
+interface Node {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  label: string;
+  role?: Role;
+  href?: string;
+}
+const H = 46;
+const nodes: Node[] = [
+  { id: "goal", x: 470, y: 50, w: 240, label: "Goal: more learning per FLOP", role: "accent" },
+  { id: "lpf", x: 156, y: 162, w: 188, label: "Loss-per-FLOP & scaling", href: "/concepts/loss-per-flop-and-scaling-laws" },
+  { id: "cp", x: 470, y: 162, w: 198, label: "Compression = prediction", href: "/concepts/compression-equals-prediction" },
+  { id: "s4", x: 786, y: 162, w: 180, label: "Source-(iv) advantage", href: "/concepts/source-iv-advantage" },
+  { id: "preq", x: 300, y: 286, w: 184, label: "Prequential evaluation", href: "/concepts/prequential-evaluation" },
+  { id: "cmix", x: 668, y: 306, w: 190, label: "Online context mixing", role: "reference", href: "/concepts/context-mixing" },
+  { id: "fwm", x: 462, y: 414, w: 184, label: "Fast-weight memory", role: "fast_weight", href: "/concepts/fast-weight-memory" },
+  { id: "exp", x: 462, y: 504, w: 156, label: "Experiment log", role: "accent", href: "/experiments" },
+];
+const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+interface Edge {
+  from: string;
+  to: string;
+  dashed?: boolean;
+}
+const edges: Edge[] = [
+  { from: "goal", to: "lpf" },
+  { from: "goal", to: "cp" },
+  { from: "goal", to: "s4" },
+  { from: "lpf", to: "preq" },
+  { from: "cp", to: "preq" },
+  { from: "cp", to: "cmix" },
+  { from: "s4", to: "cmix" },
+  { from: "s4", to: "fwm" },
+  { from: "preq", to: "fwm" },
+  { from: "preq", to: "cmix" },
+  { from: "fwm", to: "exp", dashed: true },
+  { from: "cmix", to: "exp", dashed: true },
+  { from: "preq", to: "exp", dashed: true },
+];
+
+function endpoints(a: Node, b: Node) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    // vertical-ish: bottom of a -> top of b
+    return { x1: a.x, y1: a.y + H / 2, x2: b.x, y2: b.y - H / 2 };
+  }
+  // horizontal-ish: side of a -> opposite side of b
+  const s = Math.sign(dx);
+  return { x1: a.x + (s * a.w) / 2, y1: a.y, x2: b.x - (s * b.w) / 2, y2: b.y };
+}
+---
+
+<figure class="cmap figure">
+  <svg viewBox="0 0 940 558" role="img" aria-label="Concept map of the smolml compendium" class="cmap-svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#6f6650"></path>
+      </marker>
+    </defs>
+
+    {
+      edges.map((e) => {
+        const p = endpoints(byId[e.from], byId[e.to]);
+        return (
+          <line
+            x1={p.x1}
+            y1={p.y1}
+            x2={p.x2}
+            y2={p.y2}
+            class={e.dashed ? "cmap-edge dashed" : "cmap-edge"}
+            marker-end="url(#arrow)"
+          />
+        );
+      })
+    }
+
+    {
+      nodes.map((n) => {
+        const inner = (
+          <g class={`cmap-node role-${n.role ?? "default"}`}>
+            <rect x={n.x - n.w / 2} y={n.y - H / 2} width={n.w} height={H} rx="9" />
+            <text x={n.x} y={n.y + 4} text-anchor="middle">
+              {n.label}
+            </text>
+          </g>
+        );
+        return n.href ? (
+          <a href={n.href} aria-label={n.label}>
+            {inner}
+          </a>
+        ) : (
+          inner
+        );
+      })
+    }
+  </svg>
+  <figcaption class="figcaption">
+    The dependency spine: the goal flows into three pillars, which feed the prequential
+    protocol, the two mechanisms (the fast-weight candidate and the context-mixing reference),
+    and the experiment log. Every box is a page &mdash; click through.
+  </figcaption>
+</figure>
+
+<style>
+  .cmap-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    font-family: var(--font-mono);
+  }
+  .cmap-edge {
+    stroke: #6f6650;
+    stroke-width: 1.4;
+  }
+  .cmap-edge.dashed {
+    stroke-dasharray: 5 5;
+    stroke: #5a5240;
+  }
+  .cmap-node rect {
+    fill: var(--ink-2);
+    stroke: var(--accent-deep);
+    stroke-width: 1.4;
+    transition:
+      fill 0.15s ease,
+      stroke 0.15s ease;
+  }
+  .cmap-node text {
+    fill: var(--paper);
+    font-size: 12.5px;
+  }
+  .role-reference rect {
+    stroke: var(--c-reference);
+  }
+  .role-fast_weight rect {
+    stroke: var(--c-fast);
+  }
+  .role-accent rect {
+    stroke: var(--accent);
+  }
+  a:hover .cmap-node rect {
+    fill: var(--ink-3);
+    stroke: var(--accent);
+  }
+  a {
+    border: none;
+    cursor: pointer;
+  }
+  a:hover .cmap-node text {
+    fill: #fff7e8;
+  }
+</style>

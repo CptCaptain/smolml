@@ -1,0 +1,64 @@
+---
+import type { NavItem } from "../data/nav";
+interface Props {
+  items: NavItem[];
+}
+const { items } = Astro.props;
+---
+
+<div class="cards">
+  {
+    items.map((it) => (
+      <a class="card" href={it.href}>
+        <span class="card-kick">{it.kicker}</span>
+        <span class="card-title">{it.title}</span>
+        <span class="card-blurb">{it.blurb}</span>
+      </a>
+    ))
+  }
+</div>
+
+<style>
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+    gap: 0.85rem;
+    margin: 1.6em 0;
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, var(--ink-1), var(--ink));
+    color: var(--paper);
+    transition:
+      transform 0.16s ease,
+      border-color 0.16s ease,
+      background 0.16s ease;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: var(--accent-deep);
+    background: linear-gradient(180deg, var(--ink-2), var(--ink-1));
+  }
+  .card-kick {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.16em;
+    color: var(--accent-deep);
+  }
+  .card-title {
+    font-family: var(--font-display);
+    font-size: 1.12rem;
+    font-weight: 560;
+    line-height: 1.18;
+  }
+  .card-blurb {
+    font-size: 0.92rem;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+</style>

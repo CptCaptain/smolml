@@ -1,0 +1,81 @@
+---
+title: Compression = prediction
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import Pipeline from "../../components/Pipeline.astro";
+import CodeLengthDemo from "../../components/CodeLengthDemo.tsx";
+
+<Layout
+  title="Compression = prediction"
+  kicker="CONCEPT 02"
+  blurb="A good predictor is a good compressor — and what bits-per-byte means."
+  related={[
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — Pareto-hollow" },
+  ]}
+>
+
+## Intuition
+
+A model that assigns probability $p$ to the next byte can be turned into a compressor that stores
+that byte in $-\log_2 p$ **bits** (that is what arithmetic coding does), and vice versa. So
+*predicting well* and *compressing well* are the **same objective**. There is no difference between
+"a language model" and "a compressor" at the level of the math — only in how you package and reuse
+the artifact.
+
+<Pipeline
+  steps={[
+    { label: "context", sub: "bytes so far" },
+    { label: "model", sub: "p(next byte)", accent: "accent" },
+    { label: "\u2212log\u2082 p", sub: "bits for this byte" },
+    { label: "\u03a3 \u00f7 bytes", sub: "= bpb" },
+  ]}
+  feedback="the same p drives an arithmetic coder \u2192 a compressed file of exactly that bit-length"
+/>
+
+## What bits-per-byte means
+
+**bits-per-byte (bpb)** is the average cost, in bits, to encode each byte of held-out text:
+
+$$\mathrm{bpb} = \frac{1}{n}\sum_{i=1}^{n} -\log_2 p(b_i \mid c_i)$$
+
+It is just cross-entropy measured in bits and normalized per byte. Working at the **byte** level
+means no tokenizer choices muddy the comparison. Lower is better:
+
+- random ASCII English &asymp; **4&ndash;5 bpb**,
+- a good model on `enwik8` reaches &asymp; **1 bpb**,
+- the [Hutter Prize](http://prize.hutter1.net) frontier is &asymp; **0.9 bpb**.
+
+The uninformed anchor is **8 bpb** — a uniform guess over 256 byte values. Every bit you shave off
+8 is a byte the model stopped being surprised by.
+
+## Poke it
+
+<CodeLengthDemo client:visible />
+
+## Worked example
+
+Suppose after `"the cat sat on the ma"` the model puts $p(\texttt{'t'}) = 0.5$. The cost is
+$-\log_2 0.5 = \mathbf{1}$ bit for that byte. If it were more confident, $p(\texttt{'t'}) = 0.9$,
+the cost drops to $-\log_2 0.9 \approx \mathbf{0.152}$ bits. Sum these costs over the whole eval
+stream and divide by the byte count to get bpb. So "lower bpb" literally means "less surprised,
+byte by byte."
+
+<Callout variant="insight">
+Chasing low **bpb-per-FLOP** *is* chasing a better predictive model. That equivalence lets us
+borrow the entire compression literature — especially
+[online context mixing](/concepts/context-mixing) — both as inspiration and as a per-FLOP
+**ceiling** to measure candidates against.
+</Callout>
+
+## See also
+
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — bits in their scaling context.
+- [Prequential evaluation](/concepts/prequential-evaluation) — cumulative bits = compressed length, scored honestly.
+- [Online context mixing](/concepts/context-mixing) — the compression lineage that sets the ceiling.
+
+</Layout>

@@ -1,0 +1,71 @@
+---
+// Styled aside. Variants tuned to this project's recurring rhetorical moves:
+//   note     — neutral aside
+//   insight  — the load-bearing takeaway ("this is the lesson")
+//   caveat   — "visualize honestly" / what NOT to read into a number
+//   warning  — a sharp correction (e.g. a reference is not a candidate)
+interface Props {
+  variant?: "note" | "insight" | "caveat" | "warning";
+  title?: string;
+}
+const { variant = "note", title } = Astro.props;
+const LABEL = {
+  note: "note",
+  insight: "the lesson",
+  caveat: "read honestly",
+  warning: "watch out",
+} as const;
+const label = title ?? LABEL[variant];
+---
+
+<aside class={`callout callout--${variant}`}>
+  <p class="callout-label">{label}</p>
+  <div class="callout-body">
+    <slot />
+  </div>
+</aside>
+
+<style>
+  .callout {
+    margin: 1.7em 0;
+    padding: 0.9rem 1.15rem;
+    border: 1px solid var(--line);
+    border-left-width: 3px;
+    border-radius: var(--radius);
+    background: var(--ink-1);
+  }
+  .callout-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    margin: 0 0 0.4rem;
+    color: var(--muted);
+  }
+  .callout-body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .callout-body :global(p:first-child) {
+    margin-top: 0;
+  }
+  .callout--insight {
+    border-left-color: var(--accent);
+    background: linear-gradient(180deg, rgba(232, 181, 77, 0.07), var(--ink-1));
+  }
+  .callout--insight .callout-label {
+    color: var(--accent);
+  }
+  .callout--caveat {
+    border-left-color: var(--c-reference);
+  }
+  .callout--caveat .callout-label {
+    color: var(--c-reference);
+  }
+  .callout--warning {
+    border-left-color: var(--c-fast);
+    background: linear-gradient(180deg, rgba(240, 145, 62, 0.07), var(--ink-1));
+  }
+  .callout--warning .callout-label {
+    color: var(--c-fast);
+  }
+</style>

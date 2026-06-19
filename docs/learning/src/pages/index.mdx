@@ -1,15 +1,74 @@
 ---
-title: smolml compendium
+title: The smolml compendium
 ---
 
 import Layout from "../layouts/Layout.astro";
+import ConceptMap from "../components/ConceptMap.astro";
+import CardGrid from "../components/CardGrid.astro";
+import Callout from "../components/Callout.astro";
+import { concepts, experiments } from "../data/nav";
 
-<Layout title="smolml compendium" landing={true}>
+<Layout title="The smolml compendium" landing={true}>
 
-# smoke test
+<div class="hero">
+  <span class="kicker">a scout's learning compendium</span>
+  <h1>Hunting for a learning algorithm with better&nbsp;<span class="hl">loss&#8209;per&#8209;FLOP</span>.</h1>
+  <p class="hero-lede">
+    An ever-growing, interactive map of everything we learn while looking for a mechanism that is
+    <em>fundamentally</em> more compute-efficient than the transformer baseline &mdash; at tiny
+    scale, on a fixed FLOP budget. Every concept gets intuition, the math, a worked example, and a
+    picture you can poke. Every experiment gets a curve and an honest verdict.
+  </p>
+</div>
 
-Inline math $-\log_2 p$ and display:
+<section id="map" class="anchor">
 
-$$\mathrm{bpb} = \frac{1}{n}\sum_i -\log_2 p(b_i \mid c_i)$$
+## The concept map
+
+<ConceptMap />
+
+</section>
+
+<section id="concepts" class="anchor">
+
+## Concepts
+
+The load-bearing ideas, in dependency order &mdash; start at the top of the map and walk down.
+
+<CardGrid items={concepts} />
+
+</section>
+
+<section id="experiments" class="anchor">
+
+## Experiments
+
+The log: what we tried, the bpb-vs-FLOP curve, and what we learned. Failures are first-class data.
+
+<CardGrid items={experiments} />
+
+</section>
+
+<Callout variant="insight" title="how to read this">
+The one metric is **validation bits-per-byte (bpb) at a fixed total-FLOP budget** on a tiny
+corpus. "Faster" means **lower bpb at equal FLOPs** &mdash; not wall-clock, not parameter count,
+not "it answered a question." Everything here is in service of reading that one curve honestly.
+</Callout>
+
+<p class="colophon">
+  Built by the <strong>docs-builder</strong> sub-agent (<a href="https://docs.astro.build">Astro</a>
+  &#43; MDX, KaTeX). Format rationale: ADR&nbsp;0005. Role split: ADR&nbsp;0006. The shared
+  glossary lives in <code>CONTEXT.md</code>; conventions in <code>docs/learning/PROCESS.md</code>.
+</p>
+
+<style>{`
+  .hero { margin: 0.5rem 0 2.6rem; max-width: 52rem; }
+  .hero h1 { font-size: clamp(2.3rem, 6vw, 3.6rem); line-height: 1.04; margin: 0.2em 0 0.5em; }
+  .hero .hl { color: var(--accent); border-bottom: 3px solid var(--accent-deep); }
+  .hero-lede { font-size: 1.3rem; line-height: 1.5; color: var(--paper-dim); max-width: 44ch; }
+  .anchor { scroll-margin-top: 5rem; }
+  .colophon { margin-top: 3rem; padding-top: 1.3rem; border-top: 1px solid var(--line);
+    font-size: 0.92rem; color: var(--muted); }
+`}</style>
 
 </Layout>
