@@ -5,6 +5,7 @@ decorators run on import), so ``list_models()`` is populated.
 """
 
 from smolml.models.context_mixing import ContextMixing, ContextMixingConfig
+from smolml.models.fast_weight import FastWeightConfig, FastWeightMemory
 from smolml.models.registry import (
     LanguageModel,
     build_model,
@@ -15,6 +16,8 @@ from smolml.models.registry import (
 from smolml.models.transformer import Transformer, TransformerConfig
 
 __all__ = [
+    "FastWeightConfig",
+    "FastWeightMemory",
     "LanguageModel",
     "ContextMixing",
     "ContextMixingConfig",
