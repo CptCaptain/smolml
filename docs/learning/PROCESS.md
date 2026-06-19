@@ -63,7 +63,7 @@ two: one chart routine for 6 chart instances; one stream scaffold for both strea
 | `Layout` | Page chrome: top bar, sticky sidebar nav, content column, "See also" rail, prev/next pager. Wrap MDX body in `<Layout …>`. | `title`, `kicker?`, `blurb?`, `related?: {href,title}[]`, `landing?` |
 | `Callout` | Styled aside. Variants: `note`, `insight` (the lesson), `caveat` (read honestly), `warning`. | `variant?`, `title?` |
 | `Pipeline` | Left-to-right flow of labeled stages + arrows, optional dashed feedback leg (online loops). | `steps: {label,sub?,accent?}[]`, `feedback?` |
-| `ConceptMap` | The landing's hand-laid SVG DAG; clickable nodes link every page (the navigational spine). | _(none; static data)_ |
+| `ConceptMap` | The landing's hand-laid SVG DAG; clickable nodes link every page (the navigational spine). Edges are smooth cubic-Bézier `<path>`s (orientation-aware control points, Δ=0.4·span) with arrowheads; the experiment "bus" stays orthogonal. | _(none; static data)_ |
 | `CardGrid` | Responsive card grid over `NavItem[]` (landing + experiments index). | `items: NavItem[]` |
 
 ### Data modules
@@ -185,3 +185,9 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   don't interpret `\u`, so they were rendering as text (e.g. fast-weight's `key\u2192byte`). Build
   green (13 pages); verified from `file://`: no rendered text contains a `\u` escape, and the two
   pages show exactly one (interactive) chart with no `<img>`. `git diff` confined to docs/learning.
+- **2026-06-19 (session 7 — curved concept-map edges):** converted the `ConceptMap` DAG edges from
+  straight `<line>`s to smooth cubic-Bézier `<path>`s via a new `edgePath()` helper — control points
+  offset along the dominant axis (Δ=0.4·span) so each curve departs/arrives perpendicular to the
+  node edge (no kinks, no bowing into boxes); arrowheads (`orient="auto-start-reverse"`) and dashed
+  feedback/log edges preserved; the experiment bus left orthogonal. Build green; verified from
+  `file://` (zero console errors) and screenshotted the landing map to confirm clean curves.

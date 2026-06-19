@@ -70,6 +70,20 @@ function endpoints(a: Node, b: Node) {
   const s = Math.sign(dx);
   return { x1: a.x + (s * a.w) / 2, y1: a.y, x2: b.x - (s * b.w) / 2, y2: b.y };
 }
+
+// Smooth cubic-Bézier edge between two nodes. Control points are offset along
+// the dominant axis so each curve departs/arrives roughly perpendicular to the
+// node edge (clean tangents, no kinks); Δ = 0.4·span keeps the bow gentle at
+// the 940×652 viewBox so curves don't lap into other boxes.
+function edgePath(a: Node, b: Node) {
+  const { x1, y1, x2, y2 } = endpoints(a, b);
+  if (Math.abs(b.y - a.y) >= Math.abs(b.x - a.x)) {
+    const d = 0.4 * (y2 - y1); // vertical-ish: leave/enter vertically
+    return `M ${x1} ${y1} C ${x1} ${y1 + d} ${x2} ${y2 - d} ${x2} ${y2}`;
+  }
+  const d = 0.4 * (x2 - x1); // horizontal-ish: leave/enter horizontally
+  return `M ${x1} ${y1} C ${x1 + d} ${y1} ${x2 - d} ${y2} ${x2} ${y2}`;
+}
 ---
 
 <figure class="cmap figure">
@@ -81,19 +95,14 @@ function endpoints(a: Node, b: Node) {
     </defs>
 
     {
-      edges.map((e) => {
-        const p = endpoints(byId[e.from], byId[e.to]);
-        return (
-          <line
-            x1={p.x1}
-            y1={p.y1}
-            x2={p.x2}
-            y2={p.y2}
-            class={e.dashed ? "cmap-edge dashed" : "cmap-edge"}
-            marker-end="url(#arrow)"
-          />
-        );
-      })
+      edges.map((e) => (
+        <path
+          d={edgePath(byId[e.from], byId[e.to])}
+          fill="none"
+          class={e.dashed ? "cmap-edge dashed" : "cmap-edge"}
+          marker-end="url(#arrow)"
+        />
+      ))
     }
 
     {
