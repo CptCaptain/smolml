@@ -1,0 +1,168 @@
+// Canonical chart datasets — the single source of truth for every bpb-vs-FLOP
+// chart on the site. Numbers are transcribed verbatim from the researchers'
+// experiment notes under docs/learning/experiments/ so the interactive
+// re-renders cannot drift from the harness-produced tables/plots.
+//
+// Provenance is recorded per dataset. Where a coordinate was NOT reported by
+// the harness (e.g. the per-eval x-positions of the amortized smoke trajectory),
+// it is flagged `reconstructed` and the chart caption says so. We never present
+// a reconstructed coordinate as a measured one.
+
+export type SeriesRole =
+  | "reference" // context-mixing reference ceiling (matplotlib tab:blue)
+  | "fast_weight" // fast-weight hybrid (matplotlib tab:orange)
+  | "transformer" // transformer baseline (matplotlib tab:green / orange in solo plot)
+  | "free" // the free online unigram floor
+  | "neutral";
+
+export interface CurvePoint {
+  /** total FLOPs (x). */
+  flops: number;
+  /** validation bits-per-byte (y). */
+  bpb: number;
+  /** short marker annotation, e.g. "order 0..3" or "4×10¹⁰". */
+  tag?: string;
+}
+
+export interface Series {
+  id: string;
+  label: string;
+  role: SeriesRole;
+  /** "curve" = connected markers; "point" = a single lone marker. */
+  kind: "curve" | "point";
+  dashed?: boolean;
+  points: CurvePoint[];
+  /** true when x-coordinates were reconstructed, not reported. */
+  reconstructed?: boolean;
+}
+
+// ── First finding: three-way Pareto (synthetic text8 clone, final 512 B tail) ──
+// Source: experiments/first-finding-pareto.md + experiments/unified-leaderboard.md
+// (the precise table). All three models on the same prequential protocol.
+export const firstFinding: Series[] = [
+  {
+    id: "context_mixing",
+    label: "context-mixing reference",
+    role: "reference",
+    kind: "point",
+    points: [{ flops: 4.283e6, bpb: 4.7779, tag: "free, ~4.3×10⁶ FLOPs" }],
+  },
+  {
+    id: "transformer",
+    label: "transformer baseline",
+    role: "transformer",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 1.727e8, bpb: 8.0003, tag: "b0" },
+      { flops: 2.101e9, bpb: 7.055, tag: "b2×10⁹" },
+      { flops: 9.812e9, bpb: 4.6139, tag: "b10¹⁰" },
+      { flops: 4.001e10, bpb: 4.1564, tag: "b4×10¹⁰" },
+    ],
+  },
+  {
+    id: "fast_weight",
+    label: "fast-weight hybrid",
+    role: "fast_weight",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 2.052e8, bpb: 7.4095, tag: "b0" },
+      { flops: 2.133e9, bpb: 6.8241, tag: "b2×10⁹" },
+      { flops: 9.844e9, bpb: 4.7534, tag: "b10¹⁰" },
+      { flops: 4.005e10, bpb: 4.3585, tag: "b4×10¹⁰" },
+    ],
+  },
+];
+
+// ── Context-mixing reference ceiling (bundled English sample, final 800 B) ──
+// Source: experiments/index.md (the 2026-06-18 reference-ceiling entry).
+// Distinct run from `firstFinding` (800 B eval stream, order sweep), so the
+// reference bpb differs (4.17 here vs 4.78 on the 512 B clone tail).
+export const contextMixingReference: Series[] = [
+  {
+    id: "context_mixing",
+    label: "context-mixing reference (order sweep)",
+    role: "reference",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 2.66e6, bpb: 4.7066, tag: "order 0..0" },
+      { flops: 4.28e6, bpb: 4.3922, tag: "order 0..1" },
+      { flops: 5.74e6, bpb: 4.2284, tag: "order 0..2" },
+      { flops: 7.02e6, bpb: 4.1733, tag: "order 0..3" },
+    ],
+  },
+  {
+    id: "transformer_untrained",
+    label: "untrained transformer (contrast)",
+    role: "transformer",
+    kind: "point",
+    points: [{ flops: 3.48e9, bpb: 7.9786, tag: "~500× the FLOPs" }],
+  },
+];
+
+// ── 0.2: first prequential transformer baseline curve (text8 clone, 512 B) ──
+// Source: experiments/0.2-prequential-baseline.md. Four total-FLOP budgets;
+// the model is frozen during eval (adaptation FLOPs = 0).
+export const prequentialBaseline: Series[] = [
+  {
+    id: "transformer",
+    label: "transformer (frozen, prequential)",
+    role: "transformer",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 1.7e8, bpb: 8.0, tag: "0 pretrain — \u201cno model\u201d" },
+      { flops: 1.6e9, bpb: 7.69, tag: "2×10⁹" },
+      { flops: 1.0e10, bpb: 6.01, tag: "10¹⁰" },
+      { flops: 3.9e10, bpb: 4.21, tag: "4×10¹⁰" },
+    ],
+  },
+];
+
+// ── 0.1: amortized baseline smoke run (bundled 5 KB sample) ──
+// Source: experiments/0.1-baseline-harness-smoke.md.
+// MEASURED: final bpb at the shared 5×10¹⁰ budget (d32=3.37, d64=3.82) and the
+// per-run step counts (220 / 46). RECONSTRUCTED: the x-positions of the
+// intermediate eval checkpoints — only the bpb *sequence* and the final budget
+// were reported, so intermediate FLOPs are placed at a uniform eval cadence
+// (perStep × stepAtEval). Endpoints are exact; the shape is the documented
+// takeaway. Flagged `reconstructed` and called out in the chart caption.
+const D32_PER_STEP = 5e10 / 220;
+const D64_PER_STEP = 5e10 / 46;
+export const AMORTIZED_BUDGET = 5e10;
+export const amortizedBaseline: Series[] = [
+  {
+    id: "d32",
+    label: "d32 — 32,928 params (220 steps)",
+    role: "transformer",
+    kind: "curve",
+    dashed: true,
+    reconstructed: true,
+    points: [
+      { flops: D32_PER_STEP * 5, bpb: 8.0 },
+      { flops: D32_PER_STEP * 30, bpb: 4.86 },
+      { flops: D32_PER_STEP * 70, bpb: 4.23 },
+      { flops: D32_PER_STEP * 130, bpb: 3.98 },
+      { flops: D32_PER_STEP * 220, bpb: 3.37, tag: "3.37 @ 5×10¹⁰" },
+    ],
+  },
+  {
+    id: "d64",
+    label: "d64 — 164,288 params (46 steps)",
+    role: "fast_weight", // reuse the orange role purely as a distinct second color
+    kind: "curve",
+    dashed: true,
+    reconstructed: true,
+    points: [
+      { flops: D64_PER_STEP * 2, bpb: 8.0 },
+      { flops: D64_PER_STEP * 14, bpb: 4.38 },
+      { flops: D64_PER_STEP * 30, bpb: 3.9 },
+      { flops: D64_PER_STEP * 46, bpb: 3.82, tag: "3.82 @ 5×10¹⁰" },
+    ],
+  },
+];
+
+// The uninformed "no-model" anchor: uniform over 256 bytes = 8 bits/byte.
+export const NO_MODEL_BPB = 8.0;

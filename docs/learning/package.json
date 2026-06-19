@@ -1,0 +1,26 @@
+{
+  "name": "smolml-compendium",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The smolml interactive learning compendium — an MDX/Astro site (ADR 0005).",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^6.0.3",
+    "@astrojs/preact": "^5.1.5",
+    "@fontsource-variable/fraunces": "^5.2.9",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource-variable/newsreader": "^5.2.10",
+    "astro": "^6.4.8",
+    "katex": "^0.17.0",
+    "preact": "^10.29.2",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0"
+  }
+}

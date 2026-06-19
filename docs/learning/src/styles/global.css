@@ -1,0 +1,345 @@
+/* ===========================================================================
+   smolml compendium — design system
+   Aesthetic: a research scout's lab logbook rendered as an instrument readout.
+   Warm near-black "paper", a faint graph-paper grid, a characterful serif
+   display face (Fraunces) over a readable body serif (Newsreader), and
+   JetBrains Mono for every number/axis/label. One amber accent for the UI;
+   the three model roles keep fixed colors that match the embedded matplotlib
+   plots (reference=blue, fast-weight=orange, transformer=green) so the
+   interactive re-renders read as the same instrument.
+   =========================================================================== */
+
+@import "@fontsource-variable/fraunces";
+@import "@fontsource-variable/newsreader";
+@import "@fontsource-variable/jetbrains-mono";
+@import "katex/dist/katex.min.css";
+
+:root {
+  /* surfaces */
+  --ink: #16130e;
+  --ink-1: #1b1711;
+  --ink-2: #221d15;
+  --ink-3: #2b251b;
+  --line: #3a3326;
+  --line-soft: rgba(180, 160, 120, 0.1);
+
+  /* text */
+  --paper: #ece3d2;
+  --paper-dim: #c8bca4;
+  --muted: #9a8e76;
+  --faint: #6f6650;
+
+  /* accent (UI) */
+  --accent: #e8b54d;
+  --accent-deep: #c8902a;
+  --accent-glow: rgba(232, 181, 77, 0.16);
+
+  /* data roles — match the harness plots, brightened for the dark ground */
+  --c-reference: #5ea8e6;
+  --c-fast: #f0913e;
+  --c-transformer: #5cc46a;
+  --c-free: #cf8be0;
+  --c-neutral: #9a8e76;
+
+  /* type */
+  --font-display: "Fraunces Variable", Georgia, serif;
+  --font-body: "Newsreader Variable", Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  /* metrics */
+  --content-w: 46rem;
+  --rail-w: 15rem;
+  --radius: 7px;
+  --radius-lg: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--ink);
+  /* faint graph paper: fine grid + a heavier 5-square ruling */
+  background-image:
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
+    radial-gradient( at 80% -10%, rgba(232, 181, 77, 0.05), transparent 55%);
+  background-size:
+    26px 26px,
+    26px 26px,
+    100% 100%;
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 1.08rem;
+  line-height: 1.7;
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── typography ─────────────────────────────────────────────────────────── */
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 560;
+  line-height: 1.12;
+  letter-spacing: -0.012em;
+  color: var(--paper);
+  margin: 2.4em 0 0.55em;
+}
+h1 {
+  font-size: clamp(2.1rem, 5.2vw, 3.05rem);
+  font-weight: 600;
+  margin-top: 0;
+  letter-spacing: -0.02em;
+}
+h2 {
+  font-size: 1.74rem;
+  padding-top: 0.5em;
+  border-top: 1px solid var(--line);
+}
+h3 {
+  font-size: 1.3rem;
+  color: var(--paper-dim);
+}
+h4 {
+  font-size: 1.06rem;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+p {
+  margin: 0 0 1.1em;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-glow);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+a:hover {
+  color: #f6cf78;
+  border-bottom-color: var(--accent);
+}
+
+strong {
+  color: #fff7e8;
+  font-weight: 620;
+}
+em {
+  color: var(--paper-dim);
+}
+
+small {
+  font-size: 0.82em;
+  color: var(--muted);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 2.4em 0;
+}
+
+/* lists */
+ul,
+ol {
+  margin: 0 0 1.2em;
+  padding-left: 1.3em;
+}
+li {
+  margin: 0.32em 0;
+}
+li::marker {
+  color: var(--accent-deep);
+}
+
+/* code & mono */
+code,
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.08em 0.36em;
+  color: #f0d79a;
+}
+pre {
+  font-family: var(--font-mono);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  background: var(--ink-1);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-deep);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  margin: 1.4em 0;
+}
+pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--paper-dim);
+  font-size: inherit;
+}
+
+blockquote {
+  margin: 1.4em 0;
+  padding: 0.4em 0 0.4em 1.15em;
+  border-left: 3px solid var(--line);
+  color: var(--paper-dim);
+  font-style: italic;
+}
+
+/* tables */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.6em 0;
+  font-size: 0.92rem;
+  font-family: var(--font-mono);
+}
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 0.5em 0.7em;
+  border-bottom: 1px solid var(--line);
+}
+.prose thead th {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 1.5px solid var(--accent-deep);
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+}
+.prose tbody tr:hover {
+  background: var(--ink-1);
+}
+.prose td:not(:first-child),
+.prose th:not(:first-child) {
+  text-align: right;
+}
+
+/* KaTeX: keep display math from overflowing, tune color */
+.katex {
+  color: #fbf1da;
+  font-size: 1.04em;
+}
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+
+/* ── shared component primitives ───────────────────────────────────────── */
+
+/* kicker label: "CONCEPT · 01" style mono eyebrow */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent-deep);
+  display: block;
+  margin-bottom: 0.7rem;
+}
+
+/* card / panel */
+.panel {
+  background: linear-gradient(180deg, var(--ink-1), var(--ink));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.4rem;
+}
+
+/* figure frame for embedded harness plots + interactive charts */
+.figure {
+  margin: 1.8em 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    repeating-linear-gradient(0deg, transparent, transparent 25px, var(--line-soft) 25px, var(--line-soft) 26px),
+    var(--ink-1);
+  overflow: hidden;
+}
+.figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.figure figcaption,
+.figcaption {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.55;
+  color: var(--muted);
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--ink-2);
+}
+.figcaption .recon {
+  color: var(--accent-deep);
+}
+
+/* the three roles as inline swatches */
+.swatch {
+  display: inline-block;
+  width: 0.72em;
+  height: 0.72em;
+  border-radius: 2px;
+  margin-right: 0.3em;
+  vertical-align: baseline;
+  position: relative;
+  top: 0.02em;
+}
+.swatch.reference {
+  background: var(--c-reference);
+}
+.swatch.fast_weight {
+  background: var(--c-fast);
+}
+.swatch.transformer {
+  background: var(--c-transformer);
+}
+.swatch.free {
+  background: var(--c-free);
+}
+
+/* responsive */
+@media (max-width: 640px) {
+  body {
+    font-size: 1.02rem;
+  }
+  .prose table {
+    font-size: 0.82rem;
+  }
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
