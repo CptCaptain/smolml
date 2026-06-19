@@ -1,0 +1,106 @@
+---
+title: First finding — Pareto-hollow
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import { firstFinding } from "../../data/curves";
+
+<Layout
+  title="First finding — the fast-weight win is Pareto-hollow"
+  kicker="FINDING"
+  blurb="“Beats the baseline” ≠ “good per FLOP” once the free context-mixing reference is on the axis."
+  related={[
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/experiments/A.1-fast-weight-memory", title: "A.1 — fast-weight memory" },
+    { href: "/experiments/context-mixing-reference", title: "Context-mixing reference" },
+  ]}
+>
+
+**Status:** done. **Concepts:** [loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws),
+[prequential evaluation](/concepts/prequential-evaluation),
+[Source-(iv)](/concepts/source-iv-advantage), [fast-weight memory](/concepts/fast-weight-memory),
+[online context mixing](/concepts/context-mixing).
+
+## What was run
+
+All three models on the **same** prequential protocol — synthetic text8 clone (200000 bytes,
+seed 0), final 512 bytes as the eval stream, `context_window=512`, slow-core `d_model=48,
+n_layers=3, seq_len=128` (identical to the canonical 0.2 / A.1 runs) — swept across pretraining budgets $\{0, 2\times10^{9}, 10^{10}, 4\times10^{10}\}$
+FLOPs, scored as validation bits-per-byte vs **total** FLOPs (pretrain $+$ inference).
+
+| model | budget | total FLOPs | bpb |
+| --- | ---: | ---: | ---: |
+| context_mixing (reference) | — | $4.28\times10^{6}$ | **4.78** |
+| transformer | 0 | $1.73\times10^{8}$ | 8.00 |
+| fast_weight | 0 | $2.05\times10^{8}$ | 7.41 |
+| transformer | $2\times10^{9}$ | $1.57\times10^{9}$ | 7.69 |
+| fast_weight | $2\times10^{9}$ | $1.60\times10^{9}$ | 7.40 |
+| transformer | $10^{10}$ | $9.96\times10^{9}$ | 6.01 |
+| fast_weight | $10^{10}$ | $1.00\times10^{10}$ | 5.91 |
+| transformer | $4\times10^{10}$ | $3.93\times10^{10}$ | 4.21 |
+| fast_weight | $4\times10^{10}$ | $3.94\times10^{10}$ | 4.40 |
+
+## The bpb-vs-FLOP curve
+
+The lesson only lands when you can see the free reference sitting *under* the neural runs. Toggle
+the series and hover (or tab to) the points — the blue reference (40&times;&ndash;2300&times;
+cheaper through 10¹⁰) is below **both** neural curves through $10^{10}$ FLOPs; the neural models
+overtake it only at $4\times10^{10}$:
+
+<figure class="figure">
+  <BpbFlopChart
+    series={firstFinding}
+    noModelLine={true}
+    yMin={4.0}
+    yMax={8.3}
+    annotations={[
+      { flops: 4.283e6, bpb: 4.7779, text: "free reference — below both neural runs through 10¹⁰", dx: 18, dy: 4 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    <span class="swatch reference" />context-mixing reference &middot;
+    <span class="swatch transformer" />transformer &middot;
+    <span class="swatch fast_weight" />fast-weight. Lower-left is better; the reference is a single
+    point because it spends no pretraining.
+  </figcaption>
+</figure>
+
+## The finding (honest)
+
+`fast_weight` (frozen transformer core $+$ online associative memory) beats the transformer
+**baseline** at every budget where the core is weak — −0.59 at b0, −0.30 at b2e9, −0.10 at b1e10 —
+and **loses** once the core is well-trained: +0.19 at b4e10. The memory helps a weak core and hurts
+a good one.
+
+But the win is **Pareto-hollow**: the free online context-mixing reference reaches 4.78 bpb for
+$\sim4.3\times10^{6}$ FLOPs — **40&times;&ndash;2300&times; cheaper** than the neural runs through
+$10^{10}$, and *lower bpb than both* at every budget through $10^{10}$ (where the neural models are
+still at 5.9&ndash;6.0). The
+neural models overtake the free reference only at $4\times10^{10}$ — exactly the budget where
+`fast_weight` gives up its edge and loses to the plain transformer. So every `fast_weight` win over
+the transformer happens inside the region a free frequency model already dominates, and the
+memory's value vanishes precisely where neural compute finally pays off. A real-`enwik8` control
+reproduced the pattern.
+
+<Callout variant="insight" title="“beats the baseline” ≠ “good per FLOP”">
+The headline "fast-weight beats the transformer at low budgets" is a race between **two runners
+both behind a free pedestrian.** Once the free reference is on the axis, beating the baseline is no
+longer evidence of a per-FLOP win. **Every candidate from here is plotted against that free floor,
+not just against the transformer.** That is the methodological lesson worth internalizing.
+</Callout>
+
+**Verdict:** the Source-(iv) "free memorization" thesis is **not supported on this data** — the
+memory behaves as a weak always-on frequency model, not rote recall. (Full breakdown, variance, and
+the `enwik8` control: [A.1](/experiments/A.1-fast-weight-memory).)
+
+## See also
+
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — what a real win would have to show.
+- [Online context mixing](/concepts/context-mixing) — the free reference that does the dominating.
+- [A.1 — fast-weight memory](/experiments/A.1-fast-weight-memory) — the candidate's full experiment record.
+
+</Layout>

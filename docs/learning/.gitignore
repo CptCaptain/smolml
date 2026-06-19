@@ -1,0 +1,10 @@
+# Node/Astro toolchain artifacts — confined to docs/learning/ (ADR 0005).
+node_modules/
+dist/
+.astro/
+*.tsbuildinfo
+
+# Local env / logs
+.env
+.env.production
+npm-debug.log*

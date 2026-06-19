@@ -1,0 +1,69 @@
+---
+title: Source-(iv) advantage
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import SourceIvScreen from "../../components/SourceIvScreen.astro";
+
+<Layout
+  title="Source-(iv) advantage"
+  kicker="CONCEPT 04"
+  blurb="The only kind of “win” a non-backprop idea is allowed to claim here."
+  related={[
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/fast-weight-memory", title: "Fast-weight memory" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/experiments/A.1-fast-weight-memory", title: "A.1 — fast-weight memory" },
+  ]}
+>
+
+## Intuition
+
+People reach for backprop-free learning for four reasons. Under our
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws) metric they are **not** equal:
+
+| source | the claim | what it actually buys (our metric) |
+| --- | --- | --- |
+| (i) cheaper credit assignment | "skip the backward pass" | Backward is only $\sim$2&times; forward, so the ceiling is $\sim$3&times; — usually spent back. **Modest.** |
+| (ii) locality &rarr; parallelism | "no global sync" | **Wall-clock & scaling only — scores ZERO on fixed FLOPs.** Out of scope. |
+| (iii) no activation storage | "fits in memory" | Memory only; barely touches FLOPs. |
+| **(iv) better learning dynamics** | "the update reduces loss faster per FLOP" | **The only thing that moves our scoreboard.** |
+
+So "no backprop!" by itself is not a win here — backprop is already cheap per FLOP. The whole game
+is **(iv)**: does the *update rule itself* extract more loss-reduction from each FLOP?
+
+## Run the screen
+
+<SourceIvScreen />
+
+## The screen (ADR 0003)
+
+Before any candidate earns a GPU-hour, answer the question above. If the only honest answers are
+(i), (ii), or (iii), the candidate is **parked** — not forbidden, just not a win on this metric, so
+it does not get scarce compute ahead of an idea with a real (iv) story.
+
+<Callout variant="insight">
+"Avoids backprop" and "is parallel" do **not** qualify. A candidate qualifies **only** if its
+learning *dynamics* extract more loss-reduction per FLOP. That is the entire admissions test.
+</Callout>
+
+## Worked example
+
+*Forward-Forward* replaces the backward pass with a second forward pass and a local objective.
+Sounds efficient — but two forwards $\approx$ the cost of one forward $+$ backward, so its (i)
+saving is $\approx 0$, and its big selling point is really (ii) locality. With no distinct (iv)
+story, it is **parked** here (not forbidden — fair as inspiration).
+
+The [fast-weight memory candidate](/concepts/fast-weight-memory) is the first idea with a genuine
+(iv) thesis: move rote memorization off gradient descent so the gradient FLOPs all buy
+generalization. Whether that thesis *holds* is an empirical question —
+[experiment A.1](/experiments/A.1-fast-weight-memory) answers it.
+
+## See also
+
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — why only per-FLOP wins count.
+- [Fast-weight memory](/concepts/fast-weight-memory) — the maiden (iv) candidate.
+- [Prequential evaluation](/concepts/prequential-evaluation) — how adaptation FLOPs are counted, so (ii) can't sneak in.
+
+</Layout>

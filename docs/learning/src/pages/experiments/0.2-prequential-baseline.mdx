@@ -1,0 +1,107 @@
+---
+title: 0.2 — prequential baseline
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import PrequentialStream from "../../components/PrequentialStream.astro";
+import { prequentialBaseline } from "../../data/curves";
+
+<Layout
+  title="0.2 — first prequential transformer baseline curve"
+  kicker="EXP 0.2"
+  blurb="The first curve under the real metric: predict-before-reveal, total-FLOP accounting."
+  related={[
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
+    { href: "/experiments/0.1-baseline-harness-smoke", title: "0.1 — baseline harness smoke" },
+    { href: "/experiments/A.1-fast-weight-memory", title: "A.1 — fast-weight memory" },
+  ]}
+>
+
+<Callout variant="caveat" title="status: first curve under the real metric (ADR 0004)">
+Offline tiny clone, not `enwik8`: shapes and mechanics matter, absolute bpb does not.
+</Callout>
+
+## Why this run exists
+
+Task 0.1 measured **amortized** loss-per-FLOP (train, then a held-out val pass). Task 0.2 switches
+to the protocol we actually believe in: **prequential** — predict every byte *before* it is
+revealed, pay $-\log_2 p$ bits, then optionally adapt; score cumulative bpb against **total** FLOPs
+(pretraining $+$ inference $+$ adaptation). This run is the first transformer point on that curve:
+pretrain on the prior corpus to a budget, then **frozen** prediction over the eval stream.
+
+## The loop, byte by byte
+
+<PrequentialStream />
+
+## Setup
+
+- Data: offline `text8`-style clone, carved per ADR 0004 — the **final 512 bytes are the fixed
+  prequential eval stream** (scored one byte at a time, never trained on); the preceding prefix is
+  the prior corpus.
+- Model: transformer baseline, `d_model=48, n_layers=3` (95,568 params), CPU, seed 0, frozen during
+  eval (adaptation off).
+- Four total-FLOP budgets, driven by the pretraining allowance: 0, $2\times10^{9}$, $10^{10}$,
+  $4\times10^{10}$. Total FLOPs $=$ pretrain $+\ \sum$ decode_step (the $\sim 1.7\times10^{8}$
+  inference cost of decoding 512 bytes is always counted).
+
+## Result
+
+| pretrain budget | total FLOPs | prequential bpb |
+| --- | ---: | ---: |
+| 0 (transductive, untrained) | $1.7\times10^{8}$ | 8.00 |
+| $2\times10^{9}$ | $1.6\times10^{9}$ | 7.69 |
+| $10^{10}$ | $1.0\times10^{10}$ | 6.01 |
+| $4\times10^{10}$ | $3.9\times10^{10}$ | **4.21** |
+
+<figure class="figure">
+  <BpbFlopChart
+    series={prequentialBaseline}
+    noModelLine={true}
+    yMin={3.8}
+    yMax={8.3}
+  />
+  <figcaption class="figcaption">
+    Final prequential bpb vs total FLOPs (log-x). The four points descend monotonically: spend more
+    compute (here, more pretraining) and the model is less surprised by each new byte. The
+    zero-pretrain point sits at $\approx$8.00 bpb — an untrained, frozen "no-model" anchor — and its
+    non-zero x-position is the inference cost of decoding the stream, which the metric refuses to
+    give away for free.
+  </figcaption>
+</figure>
+
+## What the curve shows
+
+- **Total-FLOP honesty.** Unlike the amortized curve (x $=$ training FLOPs only), here *every* FLOP
+  counts through one channel: each per-byte `step` returns the prediction **and** all FLOPs it
+  spent (inference $+$ any adaptation), so compute cannot hide at eval. This baseline is frozen, so
+  adaptation FLOPs are 0; a future [fast-weight candidate](/experiments/A.1-fast-weight-memory) will
+  spend them on the same budget.
+- **One axis unifies the spectrum.** Amortized (all FLOPs up front, then frozen) is one end.
+  Genuine **transductive** and **hybrid** points await an adapting candidate — once it exists, all
+  are points on this one curve, compared by lowest bpb per total FLOP.
+
+<Callout variant="caveat">
+512 bytes of a synthetic clone is a mechanics check, not a scientific bpb. The lesson is the
+*protocol* (predict-before-reveal, total-FLOP accounting), not the numbers.
+</Callout>
+
+## Reproduce
+
+```bash
+for b in 0 2e9 1e10 4e10; do
+  uv run smolml prequential --data synthetic --synthetic-bytes 200000 \
+      --eval-bytes 512 --context-window 512 --pretrain-budget $b --d-model 48 \
+      --layers 3 --seq-len 128 --run-name preq-b$b
+done
+uv run smolml leaderboard --runs-dir runs
+```
+
+## See also
+
+- [Prequential evaluation](/concepts/prequential-evaluation) — the protocol in full.
+- [A.1 — fast-weight memory](/experiments/A.1-fast-weight-memory) — the first candidate to spend adaptation FLOPs.
+
+</Layout>

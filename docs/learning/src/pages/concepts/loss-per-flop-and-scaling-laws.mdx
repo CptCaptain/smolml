@@ -1,0 +1,94 @@
+---
+title: Loss-per-FLOP & scaling laws
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import ScalingCalculator from "../../components/ScalingCalculator.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import { prequentialBaseline } from "../../data/curves";
+
+<Layout
+  title="Loss-per-FLOP & scaling laws"
+  kicker="CONCEPT 01"
+  blurb="Why “needs billions” is arithmetic, and why we measure per FLOP."
+  related={[
+    { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/experiments/0.2-prequential-baseline", title: "0.2 — prequential baseline" },
+  ]}
+>
+
+## Intuition
+
+Training compute is roughly
+
+$$C \approx 6 \cdot N \cdot D \quad\text{FLOPs}$$
+
+where $N$ = parameters and $D$ = tokens seen. (The $6 \approx 2$ for the forward pass plus
+$\approx 4$ for the backward pass, per parameter per token.) Empirical **scaling laws**
+(Kaplan 2020; Hoffmann/"Chinchilla" 2022) say validation loss falls smoothly and predictably as
+you grow $C$, $N$, and $D$ together. This is *measured*, not folklore — which is why "GPT-3 needs
+billions" is **arithmetic**, not psychology.
+
+GPT-3: $N \approx 1.75\times10^{11}$, $D \approx 3\times10^{11}$, so
+$C \approx 6\cdot N\cdot D \approx 3.15\times10^{23}$ FLOPs. A strong laptop GPU at
+$\sim 2\times10^{13}$ FLOP/s would take $\sim 1.5\times10^{10}$ s $\approx$ **500 years** at 100%
+utilization.
+
+<Callout variant="insight">
+The algorithm being simple (a transformer fits on a napkin) says nothing about this cost.
+**Simplicity of the kernel &ne; cheapness of training.** That category error is the whole trap —
+and the reason this project hunts for a *mechanism* that learns more per FLOP, not a bigger model.
+</Callout>
+
+## Do the arithmetic yourself
+
+<ScalingCalculator />
+
+## Why we measure *per FLOP*
+
+If we want a *fundamentally* cheaper learner, the fair question is: at the **same FLOP budget**, who
+reaches lower loss? FLOPs are hardware- and language-agnostic, so the comparison is honest across a
+MacBook, an AMD card, or a rented GPU. (See [bits-per-byte](/concepts/compression-equals-prediction)
+for the loss unit and [prequential evaluation](/concepts/prequential-evaluation) for *how* we count.)
+
+Concretely, the loss-vs-compute curve really does bend the way the laws predict — here is the
+project's own transformer baseline, spending more compute and getting steadily less surprised:
+
+<figure class="figure">
+  <BpbFlopChart
+    series={prequentialBaseline}
+    noModelLine={true}
+    yMin={3.8}
+    yMax={8.3}
+  />
+  <figcaption class="figcaption">
+    The real prequential baseline (experiment 0.2): bpb falls monotonically as the total-FLOP
+    budget grows — the diminishing-returns shape of a loss-vs-compute curve, in miniature. Toggle
+    the series and hover the points. Tiny corpus, so the absolute numbers are a mechanics check;
+    the <em>shape</em> is the lesson. <a href="/experiments/0.2-prequential-baseline">See 0.2 →</a>
+  </figcaption>
+</figure>
+
+## Worked example
+
+Two models, same budget $C = 10^{16}$ FLOPs on `enwik8`. The transformer baseline reaches
+1.20 bpb; a candidate reaches 1.15 bpb. The candidate "wins" at this budget — but only the **whole
+curve** (bpb vs $C$ across several budgets) tells us whether the win holds or is a one-budget
+fluke. (Illustrative numbers; the real curves live in the [experiment log](/experiments).)
+
+<Callout variant="caveat">
+A single point can mislead. A smaller model can sit *below* a bigger one at equal FLOPs simply
+because the same budget buys it more optimizer steps — exactly what
+[experiment 0.1](/experiments/0.1-baseline-harness-smoke) shows. Always read the curve, never one dot.
+</Callout>
+
+## See also
+
+- [Compression = prediction](/concepts/compression-equals-prediction) — what the loss unit (bpb) means.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of per-FLOP win that counts.
+- [Prequential evaluation](/concepts/prequential-evaluation) — how every FLOP gets counted.
+
+</Layout>

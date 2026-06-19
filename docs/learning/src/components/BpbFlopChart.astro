@@ -1,0 +1,28 @@
+---
+import type { Series } from "../data/curves";
+// Marker for the shared bpb-vs-FLOP chart. Build-time data is serialized into an
+// inline JSON script; public/js/compendium.js reads it and mounts the SVG chart
+// (classic script — works from file://). See PROCESS.md for the file:// model.
+interface Annotation {
+  flops: number;
+  bpb: number;
+  text: string;
+  dx?: number;
+  dy?: number;
+}
+interface Props {
+  series: Series[];
+  budgetLine?: number;
+  budgetLabel?: string;
+  noModelLine?: boolean;
+  annotations?: Annotation[];
+  yMin?: number;
+  yMax?: number;
+}
+const { series, budgetLine, budgetLabel, noModelLine, annotations, yMin, yMax } = Astro.props;
+const data = { series, budgetLine, budgetLabel, noModelLine, annotations, yMin, yMax };
+---
+
+<figure class="chart" data-widget="chart">
+  <script type="application/json" is:inline set:html={JSON.stringify(data)} />
+</figure>

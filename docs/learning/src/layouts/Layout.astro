@@ -1,0 +1,422 @@
+---
+import "../styles/global.css";
+import { concepts, experiments, neighbors, type NavItem } from "../data/nav";
+
+interface Related {
+  href: string;
+  title: string;
+}
+interface Props {
+  title: string;
+  kicker?: string;
+  blurb?: string;
+  related?: Related[];
+  landing?: boolean;
+}
+const { title, kicker, blurb, related = [], landing = false } = Astro.props;
+
+const here = Astro.url.pathname.replace(/\/$/, "") || "/";
+const isActive = (href: string) => (href.replace(/\/$/, "") || "/") === here;
+const { prev, next } = neighbors(here);
+
+// Page-relative prefix to the site root, for links generated client-side by
+// compendium.js (the static HTML is relativized post-build, but JS-built links
+// need this). Depth = path segments below root.
+const depth = Astro.url.pathname.replace(/^\/|\/$/g, "").split("/").filter(Boolean).length;
+const rootPrefix = depth === 0 ? "./" : "../".repeat(depth);
+
+const sections: { label: string; items: NavItem[] }[] = [
+  { label: "Concepts", items: concepts },
+  { label: "Experiments", items: experiments },
+];
+---
+
+<!doctype html>
+<html lang="en" data-root={rootPrefix}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title} · smolml compendium</title>
+    <meta name="description" content={blurb ?? "The smolml interactive learning compendium."} />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2316130e'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23e8b54d' font-family='monospace'%3E%CE%A3%3C/text%3E%3C/svg%3E" />
+    <!-- Classic script (no ESM) so interactivity works from file:// with no server. -->
+    <script is:inline defer src="/js/compendium.js"></script>
+  </head>
+  <body>
+    <a href="#main" class="skip">Skip to content</a>
+
+    <header class="topbar">
+      <a href="/" class="brand">
+        <span class="brand-mark">&Sigma;</span>
+        <span class="brand-name">smolml<span class="brand-sub">/compendium</span></span>
+      </a>
+      <nav class="topnav">
+        <a href="/#concepts">Concepts</a>
+        <a href="/experiments">Experiments</a>
+        <a href="/#map">Concept map</a>
+      </nav>
+    </header>
+
+    <div class={landing ? "shell shell--landing" : "shell"}>
+      <aside class="sidebar">
+        {
+          sections.map((s) => (
+            <div class="navgroup">
+              <p class="navgroup-label">{s.label}</p>
+              <ul>
+                {s.items.map((it) => (
+                  <li>
+                    <a href={it.href} class={isActive(it.href) ? "navlink active" : "navlink"}>
+                      <span class="navlink-kick">{it.kicker}</span>
+                      <span class="navlink-title">{it.title}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </aside>
+
+      <main id="main" class="content">
+        {
+          !landing && (
+            <header class="pagehead">
+              {kicker && <span class="kicker">{kicker}</span>}
+              <h1>{title}</h1>
+              {blurb && <p class="lede">{blurb}</p>}
+            </header>
+          )
+        }
+        <article class="prose">
+          <slot />
+        </article>
+
+        {
+          !landing && (prev || next) && (
+            <nav class="pager">
+              {prev ? (
+                <a href={prev.href} class="pager-link prev">
+                  <span class="pager-dir">&larr; previous</span>
+                  <span class="pager-title">{prev.title}</span>
+                </a>
+              ) : (
+                <span />
+              )}
+              {next ? (
+                <a href={next.href} class="pager-link next">
+                  <span class="pager-dir">next &rarr;</span>
+                  <span class="pager-title">{next.title}</span>
+                </a>
+              ) : (
+                <span />
+              )}
+            </nav>
+          )
+        }
+      </main>
+
+      {
+        !landing && (
+          <aside class="rail">
+            {related.length > 0 && (
+              <div class="rail-sticky">
+                <p class="rail-label">See also</p>
+                <ul>
+                  {related.map((r) => (
+                    <li>
+                      <a href={r.href}>{r.title}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </aside>
+        )
+      }
+    </div>
+
+    <footer class="sitefoot">
+      <span>smolml &mdash; a scout for learning-per-FLOP.</span>
+      <span class="foot-meta">Built with Astro + MDX &middot; ADR 0005 &middot; docs-builder</span>
+    </footer>
+
+    <style>
+      .skip {
+        position: absolute;
+        left: -999px;
+        top: 0;
+        background: var(--accent);
+        color: #16130e;
+        padding: 0.6em 1em;
+        border-radius: 0 0 6px 0;
+        z-index: 100;
+      }
+      .skip:focus {
+        left: 0;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.7rem clamp(1rem, 4vw, 2.4rem);
+        background: rgba(22, 19, 14, 0.86);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        border: none;
+        color: var(--paper);
+      }
+      .brand-mark {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: 1.3rem;
+        color: var(--accent);
+        border: 1px solid var(--accent-deep);
+        border-radius: 6px;
+        width: 1.8rem;
+        height: 1.8rem;
+        display: grid;
+        place-items: center;
+        background: var(--accent-glow);
+      }
+      .brand-name {
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-size: 1.15rem;
+        letter-spacing: -0.01em;
+      }
+      .brand-sub {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      .topnav {
+        display: flex;
+        gap: 1.3rem;
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        letter-spacing: 0.04em;
+      }
+      .topnav a {
+        color: var(--paper-dim);
+        border: none;
+        text-transform: uppercase;
+      }
+      .topnav a:hover {
+        color: var(--accent);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: var(--rail-w) minmax(0, var(--content-w)) var(--rail-w);
+        gap: clamp(1.2rem, 3vw, 3rem);
+        justify-content: center;
+        align-items: start;
+        max-width: 84rem;
+        margin: 0 auto;
+        padding: 2.2rem clamp(1rem, 4vw, 2.4rem) 4rem;
+      }
+      .shell--landing {
+        grid-template-columns: var(--rail-w) minmax(0, 1fr);
+        max-width: 76rem;
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 4.6rem;
+        align-self: start;
+        max-height: calc(100vh - 6rem);
+        overflow-y: auto;
+        font-size: 0.9rem;
+        padding-right: 0.4rem;
+      }
+      .navgroup {
+        margin-bottom: 1.6rem;
+      }
+      .navgroup-label {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 0.6rem;
+      }
+      .navgroup ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .navlink {
+        display: block;
+        padding: 0.4rem 0.6rem;
+        border: none;
+        border-left: 2px solid transparent;
+        border-radius: 0 5px 5px 0;
+        margin: 0.1rem 0;
+        color: var(--paper-dim);
+        line-height: 1.25;
+      }
+      .navlink-kick {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 0.62rem;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+      }
+      .navlink-title {
+        font-family: var(--font-body);
+        font-size: 0.92rem;
+      }
+      .navlink:hover {
+        background: var(--ink-1);
+        color: var(--paper);
+        border-left-color: var(--accent-deep);
+      }
+      .navlink.active {
+        background: var(--ink-2);
+        color: var(--accent);
+        border-left-color: var(--accent);
+      }
+      .navlink.active .navlink-kick {
+        color: var(--accent-deep);
+      }
+
+      .content {
+        min-width: 0;
+        animation: rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      }
+      .pagehead {
+        margin-bottom: 1.8rem;
+      }
+      .lede {
+        font-size: 1.22rem;
+        line-height: 1.5;
+        color: var(--paper-dim);
+        font-style: italic;
+        margin-top: 0.2em;
+        max-width: 40ch;
+      }
+
+      .pager {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-top: 3.5rem;
+        padding-top: 1.4rem;
+        border-top: 1px solid var(--line);
+      }
+      .pager-link {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 0.7rem 1rem;
+        max-width: 48%;
+        color: var(--paper);
+      }
+      .pager-link.next {
+        text-align: right;
+        margin-left: auto;
+      }
+      .pager-link:hover {
+        border-color: var(--accent-deep);
+        background: var(--ink-1);
+      }
+      .pager-dir {
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .pager-title {
+        font-family: var(--font-display);
+        font-size: 0.98rem;
+      }
+
+      .rail {
+        position: sticky;
+        top: 4.6rem;
+        align-self: start;
+        font-size: 0.86rem;
+      }
+      .rail-label {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 0.6rem;
+      }
+      .rail ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        border-left: 1px solid var(--line);
+      }
+      .rail li {
+        margin: 0;
+      }
+      .rail a {
+        display: block;
+        padding: 0.32rem 0.8rem;
+        border: none;
+        color: var(--paper-dim);
+        line-height: 1.3;
+      }
+      .rail a:hover {
+        color: var(--accent);
+        border-left: 2px solid var(--accent);
+        margin-left: -1px;
+      }
+
+      .sitefoot {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 0.5rem;
+        max-width: 84rem;
+        margin: 0 auto;
+        padding: 1.6rem clamp(1rem, 4vw, 2.4rem) 2.4rem;
+        border-top: 1px solid var(--line);
+        font-family: var(--font-mono);
+        font-size: 0.74rem;
+        color: var(--muted);
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+
+      @media (max-width: 1080px) {
+        .shell,
+        .shell--landing {
+          grid-template-columns: minmax(0, var(--content-w));
+          justify-content: center;
+        }
+        .sidebar,
+        .rail {
+          display: none;
+        }
+      }
+    </style>
+  </body>
+</html>

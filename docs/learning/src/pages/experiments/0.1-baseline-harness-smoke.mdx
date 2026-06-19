@@ -1,0 +1,102 @@
+---
+title: 0.1 — baseline harness smoke
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import { amortizedBaseline, AMORTIZED_BUDGET } from "../../data/curves";
+
+<Layout
+  title="0.1 — baseline harness smoke run"
+  kicker="EXP 0.1"
+  blurb="Proof the pieces wire together: two transformer baselines, amortized loss-per-FLOP."
+  related={[
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
+    { href: "/experiments/0.2-prequential-baseline", title: "0.2 — prequential baseline" },
+  ]}
+>
+
+<Callout variant="caveat" title="status: harness validation">
+This is the proof the pieces wire together end-to-end — **not** a claim about `enwik8`. The corpus
+is the tiny bundled English sample (~5 KB), so absolute bpb is not comparable to the literature;
+only the *shape* of the curves and the harness mechanics matter.
+</Callout>
+
+## Why this run exists
+
+Task 0.1 builds the foundation: a byte-level data pipeline, an honest FLOP counter, a transformer
+baseline behind a plug-in model interface, a train loop that stops at a fixed **training-FLOP**
+budget, and a leaderboard. This run proves the metric is wired correctly.
+
+## Setup
+
+- Corpus: bundled offline sample, deterministic 90/10 train/val split.
+- Two transformer baselines (pre-norm, RMSNorm, RoPE, causal), **same budget $5\times10^{10}$
+  training FLOPs** (a ceiling — both stop at $\le$ budget), **same fixed eval context (64 bytes)**,
+  CPU, seed 0:
+  - **d32** — `d_model=32, n_layers=2` &rarr; 32,928 params, 220 steps.
+  - **d64** — `d_model=64, n_layers=3` &rarr; 164,288 params, 46 steps.
+- Both start from the uninformed baseline of **8.0 bpb** (uniform over 256 bytes).
+
+## Result
+
+| model | params | steps @ $5\times10^{10}$ FLOPs | final val bpb |
+| --- | ---: | ---: | ---: |
+| d32 | 32,928 | 220 | **3.37** |
+| d64 | 164,288 | 46 | 3.82 |
+
+<figure class="figure">
+  <BpbFlopChart
+    series={amortizedBaseline}
+    budgetLine={AMORTIZED_BUDGET}
+    budgetLabel="5×10¹⁰ budget"
+    noModelLine={true}
+    yMin={3.0}
+    yMax={8.3}
+  />
+  <figcaption class="figcaption">
+    Validation bpb vs cumulative training FLOPs (log-x). Both curves fall steeply from 8.0 and bend
+    toward a floor — the diminishing-returns shape, in miniature. At the equal-FLOP budget the
+    <em> smaller</em> model (d32) sits lower. Hover the points; toggle the series.
+    <span class="recon">
+      &nbsp;Intermediate x-positions are reconstructed from a uniform eval cadence (only the step
+      counts, the bpb sequence, and the final 5×10¹⁰ budget were reported); the endpoints are exact.
+    </span>
+  </figcaption>
+</figure>
+
+## What the plot shows
+
+The instructive bit: **at equal FLOPs the smaller model (d32) is lower** (3.37 vs 3.82). Each d32
+step is far cheaper, so the same budget buys $\sim$5&times; more optimizer steps, and on a tiny
+corpus that extra optimization wins over the bigger model's per-step capacity.
+
+<Callout variant="insight">
+This is exactly why the metric is *per FLOP* and read off a **curve**, not from a single model at a
+single size: "bigger" is not automatically "better per FLOP," and a one-budget snapshot can
+mislead. (See [loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws).)
+</Callout>
+
+<Callout variant="caveat">
+Visualize honestly: this is a 5 KB sample, so the bigger model is also data-starved here. The
+lesson is methodological (how to read bpb-vs-FLOP curves), not a finding about transformer scaling.
+</Callout>
+
+## Reproduce
+
+```bash
+uv run smolml train --data sample --d-model 32 --layers 2 --seq-len 64 \
+    --eval-seq-len 64 --budget 5e10 --run-name baseline-d32
+uv run smolml train --data sample --d-model 64 --layers 3 --seq-len 64 \
+    --eval-seq-len 64 --budget 5e10 --run-name baseline-d64
+uv run smolml leaderboard --runs-dir runs
+```
+
+## See also
+
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — the "lower curve wins" idea.
+- [0.2 — prequential baseline](/experiments/0.2-prequential-baseline) — the same harness under the real metric.
+
+</Layout>

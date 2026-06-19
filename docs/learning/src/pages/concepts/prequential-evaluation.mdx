@@ -1,0 +1,89 @@
+---
+title: Prequential evaluation
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import Pipeline from "../../components/Pipeline.astro";
+import PrequentialStream from "../../components/PrequentialStream.astro";
+
+<Layout
+  title="Prequential evaluation"
+  kicker="CONCEPT 03"
+  blurb="Scoring a model that keeps learning, honestly, with no held-out split."
+  related={[
+    { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/fast-weight-memory", title: "Fast-weight memory" },
+    { href: "/experiments/0.2-prequential-baseline", title: "0.2 — prequential baseline" },
+  ]}
+>
+
+## Intuition
+
+How do you fairly score a model that **keeps learning** while it reads? Use the **prequential**
+(predictive-sequential) principle: at each step the model must **predict the next byte before it
+sees it** — paying $-\log_2 p$ bits — and only *then* may it adapt on the revealed byte. Sum the
+bits; that is the score.
+
+Because every prediction is made *before* the answer is revealed, a model that memorizes the past
+**cannot** cheat on the future — so you get an honest generalization measure **without any held-out
+split**. (This is Dawid's prequential / online-MDL view; the cumulative bits equal the compressed
+length, tying back to [compression = prediction](/concepts/compression-equals-prediction).)
+
+<Pipeline
+  steps={[
+    { label: "predict", sub: "p(next) before seeing it", accent: "accent" },
+    { label: "reveal", sub: "true byte" },
+    { label: "pay", sub: "−log₂ p bits" },
+    { label: "adapt", sub: "optional — FLOPs counted", accent: "fast_weight" },
+  ]}
+  feedback="score = cumulative bpb at a fixed total-FLOP budget (pretraining + inference + adaptation, all counted)"
+/>
+
+## Watch the loop
+
+<PrequentialStream />
+
+## Our protocol (ADR 0004)
+
+- The stream is byte-level `enwik8`. The **final 5 MB is the fixed eval stream** — the same for
+  everyone, never in the prior corpus. The first $\sim$95 MB is a freely-usable **prior corpus**.
+- A model may pretrain on the prior corpus, warm up online, or both — anything, as long as **all
+  FLOPs are counted**: pretraining $+$ inference $+$ test-time adaptation.
+- Score $=$ cumulative **bpb over the eval stream** at a fixed **total-FLOP budget**, plotted as a
+  curve over several budgets.
+
+## Why it unifies everything
+
+| strategy | spends FLOPs on | on the curve |
+| --- | --- | --- |
+| **amortized** | all up front, then frozen | one end |
+| **transductive** | zero pretraining, learns online | the other end |
+| **hybrid** | anything in between | the middle |
+
+All three are just points on **one curve**, compared by the same number — so the *winner* tells us
+the best mix instead of us guessing. See [Source-(iv) advantage](/concepts/source-iv-advantage) for
+what kind of win counts.
+
+## Worked example
+
+Two systems, total budget $10^{16}$ FLOPs. System X pretrains then freezes: **1.18 bpb** on the
+tail. System Y pretrains *less* but keeps adapting during the tail — and its adaptation FLOPs eat
+into the same budget — reaching **1.12 bpb**. Y wins, and it could not have hidden compute at eval,
+because that compute was counted.
+
+<Callout variant="insight">
+**Total-FLOP honesty** is the point: test-time adaptation is never free. A hybrid that learns at
+inference pays for those FLOPs in the same budget, so it cannot game the metric by hiding compute
+at eval. That is exactly the trap the [fast-weight candidate](/experiments/A.1-fast-weight-memory)
+is held to.
+</Callout>
+
+## See also
+
+- [Compression = prediction](/concepts/compression-equals-prediction) — cumulative bits = compressed length.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — which wins on this curve actually count.
+- [Fast-weight memory](/concepts/fast-weight-memory) — a candidate that spends adaptation FLOPs online.
+
+</Layout>
