@@ -1,6 +1,9 @@
 # Task B.3 — bounded (hashed) count tables → full-corpus mixing
 
-- Status: IN PROGRESS. Branch `task/B.3-hashed-mix` (own PR; human merges).
+- Status: hashed_mix DONE (108 tests green, cross-reviewed); full ADR-carve run in flight. Early
+  result: bounded order-6 SURVIVES at full corpus (cold 2.2570 / ~7MB-warmed 2.1111 bpb vs order-3
+  2.6224, fixed <=4.3 GiB). Full-95MB-warmup + transformer points computing in `runs/full/`. Branch
+  `task/B.3-hashed-mix` (own PR; human merges).
 - Enabler for the **full enwik8 ADR carve** (95 MB prior warmup / 5 MB eval) that B.2 could not run.
 
 ## Why (the measured blocker)

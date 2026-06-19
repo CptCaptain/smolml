@@ -16,6 +16,23 @@ on top. Each entry should link the concept pages it touches and embed/link the b
 ```
 
 ## Entries
+## 2026-06-19 — Bounded hashed tables → full-corpus mixing (B.3): the order-6 win scales  [status: in progress]
+
+- **Concepts:** [Online warm-start](../concepts/online-warmup.md),
+  [Online context mixing](../concepts/context-mixing.md),
+  [Loss per FLOP](../concepts/loss-per-flop-and-scaling-laws.md)
+- **Hypothesis:** fixed-memory hashed count tables let warmed order-6 mixing run the full enwik8 ADR
+  carve (which unbounded dicts OOM on), and the order-6 per-FLOP win survives the bounding.
+- **Setup:** `hashed_mix` (orders 4–6 in fixed 2²⁰-slot tables) on the REAL full 5 MB ADR eval /
+  95 MB prior; behavior-preserving `context_mixing` refactor (reference bit-identical).
+- **Result (so far):** bounded order-6 cold **2.2570**, ~7 MB-warmed **2.1111** bpb vs order-3's
+  **2.6224**, in fixed ≤4.3 GiB (no OOM). Full-95 MB-warmup + transformer points computing.
+  [Full note.](B.3-hashed-mix-full-corpus.md)
+- **Verdict (so far):** the order-6 win **scales to full corpus** under bounded memory; the
+  engineering (hashing), not a new mechanism, was the unlock.
+- **What we learned:** order-6 survives bounding; the long ADR eval self-warms the mixer; pushing
+  warmup further needs a bigger table (collision saturation), not more data into a small one.
+
 
 ## 2026-06-19 — Warmed online mixing (B.2): first real win + an honest negative  [status: done]
 
