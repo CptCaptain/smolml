@@ -7,6 +7,7 @@ decorators run on import), so ``list_models()`` is populated.
 from smolml.models.context_mixing import ContextMixing, ContextMixingConfig
 from smolml.models.fast_weight import FastWeightConfig, FastWeightMemory
 from smolml.models.gated_mix import GatedMix, GatedMixConfig
+from smolml.models.hashed_mix import HashedMix, HashedMixConfig
 from smolml.models.pc_refine import PCRefine, PCRefineConfig
 from smolml.models.registry import (
     LanguageModel,
@@ -23,6 +24,8 @@ __all__ = [
     "FastWeightMemory",
     "GatedMix",
     "GatedMixConfig",
+    "HashedMix",
+    "HashedMixConfig",
     "LanguageModel",
     "ContextMixing",
     "ContextMixingConfig",

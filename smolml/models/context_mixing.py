@@ -68,12 +68,14 @@ class ContextMixingConfig:
 class _MixerState:
     """Per-stream online state threaded through :meth:`ContextMixing.step`.
 
-    ``tables[k]`` maps a length-k context (as ``bytes``) to its byte-count vector;
-    ``weights`` are the mixer weights; ``last_*`` cache the prediction made for the
-    byte that is about to be revealed, so the mixer can be graded on it next step.
+    ``tables[k]`` is order-k's count store: by default a ``dict`` mapping a length-k
+    context (as ``bytes``) to its byte-count vector, but a subclass may swap some orders
+    for a bounded store (see :meth:`ContextMixing._new_tables`). ``weights`` are the mixer
+    weights; ``last_*`` cache the prediction made for the byte about to be revealed, so the
+    mixer can be graded on it next step.
     """
 
-    tables: list[dict[bytes, np.ndarray]]
+    tables: list  # per-order count stores (dict by default; overridable seam)
     weights: np.ndarray
     last_stretched: np.ndarray | None = None  # (K, V) stretched inputs of the pending prediction
     last_probs: np.ndarray | None = None  # (V,) the pending predicted distribution
@@ -180,9 +182,39 @@ class ContextMixing(LanguageModel):
 
     def init_prequential_state(self) -> DecodeState:
         k = self.num_predictors
-        tables: list[dict[bytes, np.ndarray]] = [{} for _ in range(k)]
         weights = np.full(k, 1.0 / k)  # geometric-mean init; abstaining models cancel
-        return DecodeState(tokens=[], cache=_MixerState(tables=tables, weights=weights))
+        cache = _MixerState(tables=self._new_tables(), weights=weights)
+        return DecodeState(tokens=[], cache=cache)
+
+    # --- count-store seams (default = the exact, growable dict store) -----------
+    # Extracted so a subclass can swap the store for some orders (e.g. a fixed-size
+    # hashed table) WITHOUT re-deriving the fold, the mixing, or the FLOP accounting.
+
+    def _new_tables(self) -> list:
+        """Fresh per-order count store: one ``dict`` (context ``bytes`` -> count vector)
+        per order. The default is the exact, growable dict store."""
+        return [{} for _ in range(self.num_predictors)]
+
+    def _copy_tables(self, tables: list) -> list:
+        """Deep-copy the count store so a derived (e.g. eval) stream never mutates a
+        shared (e.g. warm) store. Matches :meth:`_new_tables`' representation."""
+        return [{ctx: counts.copy() for ctx, counts in table.items()} for table in tables]
+
+    def _fold_one(self, tables: list, k: int, ctx: bytes, byte: int) -> None:
+        """Fold ``byte`` into order-``k``'s count vector for context ``ctx`` (created on
+        demand as a zero vector when unseen). The store-write seam, overridden together
+        with :meth:`_lookup_one` to back some orders with a different store."""
+        cell = tables[k].get(ctx)
+        if cell is None:
+            cell = np.zeros(self.config.vocab_size)
+            tables[k][ctx] = cell
+        cell[byte] += 1.0
+
+    def _lookup_one(self, tables: list, k: int, ctx: bytes) -> np.ndarray | None:
+        """Order-``k``'s count vector for context ``ctx``, or ``None`` if it was never
+        folded (the order then abstains -> uniform). The store-read seam mirroring
+        :meth:`_fold_one`."""
+        return tables[k].get(ctx)
 
     def step(
         self, state: DecodeState, revealed_byte: int, pos: int
@@ -215,11 +247,7 @@ class ContextMixing(LanguageModel):
             if k == 0 or len(window) >= k:
                 n_fold += 1
                 key = bytes(window[-k:]) if k else b""
-                cell = ms.tables[k].get(key)
-                if cell is None:
-                    cell = np.zeros(v)
-                    ms.tables[k][key] = cell
-                cell[revealed_byte] += 1.0
+                self._fold_one(ms.tables, k, key, revealed_byte)
 
         # 3. New context window ending at `pos`, then predict the next byte.
         cap = cfg.max_order
@@ -232,7 +260,7 @@ class ContextMixing(LanguageModel):
             if k == 0 or len(new_window) >= k:
                 n_active += 1
                 key = bytes(new_window[-k:]) if k else b""
-                cell = ms.tables[k].get(key)
+                cell = self._lookup_one(ms.tables, k, key)
             if cell is not None:
                 n_laplace += 1
                 prob = laplace_prob(cell, cfg.alpha)

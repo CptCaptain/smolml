@@ -298,3 +298,38 @@ export const gatedMix: Series[] = [
     ],
   },
 ];
+
+// ── B.3: bounded (hashed) order-6 tables on the FULL enwik8 ADR carve ─────────
+// Source: experiments/B.3-hashed-mix-full-corpus.md (the full-carve table). The
+// engineering unlock: B.2's order-6 win used unbounded dict count tables that OOM
+// (~58 GB) on a full-95 MB warmup; hashed_mix bounds the high orders (k ≥
+// hash_min_order=4) to a fixed 2^table_bits = 2^20-slot hashed table (collisions
+// accepted), so memory is fixed regardless of corpus size. On the REAL 5 MB ADR
+// eval stream (first ~95 MB = prior), the order-6 advantage survives the bounding:
+// it beats order-3 per FLOP in ≤4.3 GiB — the first end-to-end full-carve run.
+// THREE LANDED points only; two more (hashed_o6_warmfull, transformer anchor) are
+// still computing in a detached run and are NOT plotted (they live as `computing`
+// rows in the page table — no invented coordinates). hashed_o6 uses --c-warm (the
+// warmed-mixing family); the order-3 cold reference uses the reference blue.
+// NOTE: unlike B.2, the blue point is a DIFFERENT, cheaper model (order-3), not the
+// cold start of the order-6 curve — the page caption says so.
+export const hashedMixFull: Series[] = [
+  {
+    id: "reference_cold",
+    label: "context-mix order-3 (cold)",
+    role: "reference",
+    kind: "point",
+    points: [{ flops: 4.74e10, bpb: 2.6224, tag: "order-3, no warmup — peak 0.7 GiB" }],
+  },
+  {
+    id: "hashed_o6",
+    label: "hashed order-6 (bounded)",
+    role: "warm",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 7.73e10, bpb: 2.257, tag: "cold, no warmup — peak 2.3 GiB" },
+      { flops: 1.78e11, bpb: 2.1111, tag: "warmed ~7 MB — peak 4.3 GiB" },
+    ],
+  },
+];

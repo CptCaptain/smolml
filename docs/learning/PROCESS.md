@@ -70,7 +70,7 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 
 - `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`, `warm`) + datasets `firstFinding`,
   `contextMixingReference`, `prequentialBaseline`, `amortizedBaseline`, `freeUnigram`,
-  `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2), constants. Provenance-commented.
+  `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2), `hashedMixFull` (B.3), constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
 
 ## Style & convention decisions
@@ -90,8 +90,8 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (11 uses), `Pipeline` (6), `CardGrid` (2),
-  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 11 chart instances and
+- **Rule of two (factored shared viz):** `BpbFlopChart` (12 uses), `Pipeline` (6), `CardGrid` (2),
+  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 12 chart instances and
   one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
   - Wrap page body in `<Layout …>` via `import` + element, **not** the `layout:` frontmatter
@@ -122,9 +122,9 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 - **Concepts (8):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
   prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
   predictive-coding, online-warmup.
-- **Experiments (7 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
+- **Experiments (8 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
   context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
-  B.2-warmed-mixing, first-finding-pareto. Each renders the shared interactive `BpbFlopChart`
+  B.2-warmed-mixing, B.3-hashed-mix-full-corpus, first-finding-pareto. Each renders the shared interactive `BpbFlopChart`
   (one plot per page; B.2 is the lone two-plot page — Phase 1 + Phase 2 are distinct experiments;
   harness PNGs stay as artifacts under `experiments/`, not embedded — session 6).
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
@@ -245,3 +245,28 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   note:** Phase 2's real FLOP span is narrow (1.23–1.57×10⁹, one log decade) so the chart shows a
   single x tick — faithful to the data; the domination is carried by the vertical separation + the
   caption. Researcher note found internally consistent — no science flagged.
+- **2026-06-19 (session 10 — B.3 hashed-mix full-corpus page):** authored the experiment page
+  `B.3-hashed-mix-full-corpus` from the researcher note, mirroring B.2's layout/frontmatter/imports.
+  Tells the engineering-unlock story: the OOM blocker (~58 GB unbounded order-6 dicts on a full-95 MB
+  warmup), the fixed-memory hashed-table fix (PAQ/cmix-style $2^{20}$-slot table, `hash_min_order=4`;
+  a behavior-preserving refactor that kept the cold reference bit-identical, plus the cross-vendor
+  halve-on-overflow charge + order-≤8 guard), the full-ADR-carve table (3 LANDED points + 2 rows
+  clearly marked *computing*), the interpretation, and the what-we-learned. Headline `insight` Callout
+  (the order-6 win scales under bounded memory — the unlock was engineering, not a new mechanism) and a
+  `caveat` Callout spelling out that the two pending rows carry no numbers. **No new component, role,
+  or token** — rule of two not triggered: reused `BpbFlopChart` / `Callout` / `ConceptMap`, the
+  existing `--c-warm` (vermilion) for the bounded order-6 `hashed_mix` family and the `reference` blue
+  for the order-3 cold point. Added the `hashedMixFull` dataset to `curves.ts` (3 landed points only;
+  the 2 pending entrants are NOT plotted — they live as *computing* table rows, no invented
+  coordinates). Wired into `nav.ts` (EXP B.3, between B.2 and first-finding), the experiments index
+  (auto via nav), the `ConceptMap` (8th experiment leaf `B.3 hashed mix` on the bus, re-spaced 7→8 at
+  `LEAF_W=112`), and reciprocal See-also links (B.2 ↔ B.3 in both the rail and prose; online-warmup →
+  B.3). `BpbFlopChart` now 12 uses. Build green (18 pages); verified from `dist/`: B.3 page built, 27
+  KaTeX spans, chart JSON carries both series, zero `\u` leaks, *computing* cells render literally, and
+  B.3 resolves from the concept map / experiments index / B.2 / online-warmup. **Viz note:** unlike
+  B.2 (where the blue dot was warm_mix's own cold start), here the blue `reference` point is a
+  *different, cheaper* model (order-3) — not the cold start of the order-6 curve; the caption says so
+  explicitly so the "order-6 beats order-3 per FLOP" reading stays honest. The 3 landed points span
+  &lt;1 FLOP decade ($4.74\times10^{10}$–$1.78\times10^{11}$), wider than B.2 Phase 2, so the log-x
+  separation reads cleanly; peak RAM (a new dimension) stays in the table, not on the axes (flagged in
+  the caption). Researcher note found internally consistent — no science flagged.
