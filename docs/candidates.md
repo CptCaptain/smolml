@@ -30,7 +30,7 @@ baseline. Status: `idea` → `queued` → `running` → `beat-baseline` / `lost`
 | Predictive coding | Local error-driven updates; **surprise-gated settling** (B.1) | Spend settling only on hard bytes — more loss-reduction per FLOP | **tested (B.1): lever real, mechanism Pareto-hollow on synthetic; enwik8 control pending** |
 | Equilibrium propagation | Energy-based local learning | Single mechanism for inference + learning | idea |
 | Feedback alignment / target prop | Replace exact gradients with cheaper signals | Avoids weight transport; cheaper backward | idea |
-| Fast-weight programmers | Network writes its own fast weights | Schmidhuber's "learning to learn"; meta-efficiency | idea |
+| Fast-weight programmers / delta-rule memory | Online error-correcting (delta/LMS) write on a distributed key — `delta_mix` (B.4) | Generalizes across contexts exact count tables abstain on; exact gradient = error, no backward pass | **tested (B.4): CI kill-test PASS — first non-hollow Space-B win; full-carve headline pending** |
 | Evolution strategies / zeroth-order | Gradient-free parameter search | No backward pass; embarrassingly parallel | idea |
 
 ## Notes / honest priors
@@ -99,6 +99,22 @@ hashed count tables let the order-6 win run without the ~58 GB OOM unbounded dic
 2.6224), in fixed ≤5.0 GiB, far below the transformer. Pre-warming pays all the way to the full
 95 MB prior — **2.0157 bpb @ 1.48e12** (the table did NOT saturate: 2.11→2.02); the transformer
 landed at 5.4770 @ 1.46e14 (~100,000× the FLOPs). See `docs/learning/experiments/B.3-hashed-mix-full-corpus.md`.
+
+### B.4 result — online delta-rule fast-weight memory (`delta_mix`)
+The **first non-Pareto-hollow Space-B (learning-rule) candidate.** `delta_mix` = the warmed hashed
+ladder + ONE online error-correcting **delta-rule** fast-weight predictor `W∈ℝ^(256×d)` keyed on a
+*fixed sparse signed hashed bag of byte n-grams* (orders 3–8), mixed as one extra raw-logit stream.
+Sparsity makes the read AND the rank-1 write `O(sV)` (not `O(dV)`) — the feasibility crux; `d` is
+RAM/collisions only, never FLOPs. The (iv) edge over the count mixer: a distributed key
+**generalizes** across near-miss/unseen contexts the exact order-k tables must abstain on, and the
+convex linear-in-fixed-features loss makes the gradient *be* the error (no backward pass). On the
+CI matched-FLOP kill-test (real enwik8 4 MB slice, total ≈1.07e10): **delta 2.4181 bpb beats BOTH
+`counts_only` 2.4353 AND `counts_more_warm` 2.4327** — i.e. spending the FLOPs on the learning rule
+beats spending them on more warm counts (−0.0146 bpb at matched total). Diagnostics: the mixer
+learns weight **+0.86** on the delta stream (load-bearing, NOT A.1's dead gate); on 20,051
+top-order-**unseen** contexts delta-only scores **3.73 bpb vs the abstaining count's 8.0** (the
+generalization mechanism, confirmed at scale). Full 5 MB-ADR-carve headline vs the 2.0157 bar:
+running detached (`delta_o6_warmfull`). See `docs/learning/experiments/B.4-delta-mix.md`.
 
 LOCKED (ADR 0004) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
 total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot
