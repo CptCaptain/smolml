@@ -79,6 +79,11 @@ class _MixerState:
     weights: np.ndarray
     last_stretched: np.ndarray | None = None  # (K, V) stretched inputs of the pending prediction
     last_probs: np.ndarray | None = None  # (V,) the pending predicted distribution
+    # Optional fast-weight stream (DeltaMix only; None for every count-only model): the per-stream
+    # delta-rule weights and the pending delta-stream key/prediction graded next step (see delta_mix).
+    W: np.ndarray | None = None  # (V, delta_dim) online fast weights
+    last_phi: tuple[np.ndarray, np.ndarray] | None = None  # (indices[s], signs[s]) of the last key
+    last_p_delta: np.ndarray | None = None  # (V,) softmax(W·phi) of the pending delta prediction
 
 
 def laplace_prob(counts: np.ndarray, alpha: float) -> np.ndarray:
