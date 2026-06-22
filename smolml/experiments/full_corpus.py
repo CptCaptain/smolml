@@ -40,6 +40,15 @@ SEQ_LEN = 128
 # hashed order-6: orders 4-6 in fixed 2**20-slot tables (~0.5 GiB/order, ~1.5 GiB; eval doubles it).
 HASHED_CFG: dict[str, object] = {"max_order": 6, "hash_min_order": 4, "table_bits": 20}
 CORE_CFG: dict[str, object] = {"d_model": 48, "n_layers": 3, "n_heads": 4, "max_seq_len": 128}
+# delta_mix (Task B.4): the hashed order-6 ladder + one online delta-rule fast-weight stream
+# (orders 3-8 in a 2**18-col W, ~268 MiB/stream). RUN ONLY IF the CI-fast kill-test PASSES
+# (smolml.experiments.delta_mix_enwik8). Budget ~1.2e12 so the total lands near the 1.48e12 bar.
+DELTA_CFG: dict[str, object] = {
+    **HASHED_CFG,
+    "delta_dim": 1 << 18,
+    "delta_orders": (3, 4, 5, 6, 7, 8),
+    "delta_eta": 0.2,
+}
 
 
 def _peak_gib() -> float:
@@ -86,6 +95,8 @@ def main() -> None:
     _run("hashed_mix", dict(HASHED_CFG), 0.0, "hashed_o6_cold")
     _run("hashed_mix", dict(HASHED_CFG), 1e11, "hashed_o6_warm1e11")
     _run("hashed_mix", dict(HASHED_CFG), 1.4e12, "hashed_o6_warmfull")
+    # delta_mix entrant (Task B.4) — gated on the CI-fast kill-test PASS; multi-hour, ~5 GiB peak:
+    _run("delta_mix", dict(DELTA_CFG), 1.2e12, "delta_o6_warmfull")
     _run("transformer", dict(CORE_CFG), 2e10, "transformer")
     table, _ = regenerate(
         RUNS_DIR, table_path=f"{RUNS_DIR}/leaderboard.md", plot_path=f"{RUNS_DIR}/leaderboard.png"
