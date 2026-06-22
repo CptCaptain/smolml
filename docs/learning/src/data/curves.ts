@@ -333,3 +333,49 @@ export const hashedMixFull: Series[] = [
     ],
   },
 ];
+
+
+// ── B.4: delta_mix matched-FLOP kill-test (real enwik8, 4 MB slice, total ≈1.07e10) ──
+// Source: experiments/B.4-delta-mix.md (the matched-FLOP kill-test table). The first
+// NON-Pareto-hollow Space-B (learning-rule) result: one online delta-rule (LMS, error-
+// correcting) fast-weight stream on a sparse signed feature-hashed key, added as one more
+// raw-logit row in the warmed hashed context-mixer. The kill-test plots the cheap count
+// baselines first and demands the candidate beat BOTH at matched total FLOPs:
+//   (a) counts_only      — the cheap hashed order-6 ladder at budget      → reference (blue)
+//   (b) delta            — counts + the delta stream (the candidate)      → fast_weight (orange)
+//   (c) counts_more_warm — the SAME FLOPs spent on more warm count bytes  → warm (vermilion)
+// (b) beats both (a) and (c); the binding pair is (b) vs (c) at matched total FLOPs
+// (1.074e10 vs 1.072e10): −0.0146 bpb. Three lone MEASURED points (kind:"point"), clustered
+// tightly in x (a hair apart on a log-FLOP axis — matched FLOPs forces this, as in B.1) and
+// separated in y by ~0.017 bpb, so a tight yMin/yMax carries the story and the matched (b,c)
+// pair is marked in the page caption/annotations. delta is colored fast_weight (orange) because
+// it IS a fast-weight associative memory — the delta-rule flavor, the A.1 family done right:
+// A.1 (also orange) was the transformer bolt-on that collapsed to the byte marginal; B.4 is the
+// same family that finally clears the cheap-baseline bar. The two count entrants reuse B.3's
+// vermilion (warmed hashed counts) and the reference blue (the cheap count ladder it must beat).
+// The full-5 MB-ADR-carve headline (delta_o6_warmfull) vs the 2.0157 bpb @ 1.48e12 bar was STILL
+// RUNNING when the note was written, and runs/full/leaderboard.md carries no delta_o6_warmfull
+// row, so it is PENDING — NOT plotted here (no invented coordinate); it lives as a pending row.
+export const deltaMix: Series[] = [
+  {
+    id: "counts_only",
+    label: "counts_only (hashed order-6)",
+    role: "reference",
+    kind: "point",
+    points: [{ flops: 1.05e10, bpb: 2.4353, tag: "the cheap ladder at budget" }],
+  },
+  {
+    id: "delta",
+    label: "delta (counts + delta stream)",
+    role: "fast_weight",
+    kind: "point",
+    points: [{ flops: 1.074e10, bpb: 2.4181, tag: "candidate — beats both baselines" }],
+  },
+  {
+    id: "counts_more_warm",
+    label: "counts_more_warm (hashed order-6)",
+    role: "warm",
+    kind: "point",
+    points: [{ flops: 1.072e10, bpb: 2.4327, tag: "same FLOPs, all on more warm counts" }],
+  },
+];

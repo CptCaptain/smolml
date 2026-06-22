@@ -49,22 +49,24 @@ const edges: Edge[] = [
   { from: "s4", to: "pc" },
   { from: "pc", to: "exp", dashed: true },
   { from: "cmix", to: "warm" },
+  { from: "warm", to: "fwm" },
 ];
 
 // Experiment leaves: each individual experiment page, hung off the log node on a
 // connector "bus" so every experiment is reachable from the map too (no orphans).
-const LEAF_W = 112;
+const LEAF_W = 100;
 const LEAF_Y = 602;
 const BUS_Y = 564;
 const expLeaves: Node[] = [
-  { id: "e01", x: 64, y: LEAF_Y, w: LEAF_W, label: "0.1 baseline smoke", href: "/experiments/0.1-baseline-harness-smoke" },
-  { id: "e02", x: 180, y: LEAF_Y, w: LEAF_W, label: "0.2 prequential", href: "/experiments/0.2-prequential-baseline" },
-  { id: "eref", x: 296, y: LEAF_Y, w: LEAF_W, label: "0.3 cmix reference", role: "reference", href: "/experiments/context-mixing-reference" },
-  { id: "ea1", x: 412, y: LEAF_Y, w: LEAF_W, label: "A.1 fast-weight", role: "fast_weight", href: "/experiments/A.1-fast-weight-memory" },
-  { id: "eb1", x: 528, y: LEAF_Y, w: LEAF_W, label: "B.1 PC refinement", role: "pc", href: "/experiments/B.1-surprise-gated-pc-refinement" },
-  { id: "eb2", x: 644, y: LEAF_Y, w: LEAF_W, label: "B.2 warmed mixing", role: "warm", href: "/experiments/B.2-warmed-mixing" },
-  { id: "eb3", x: 760, y: LEAF_Y, w: LEAF_W, label: "B.3 hashed mix", role: "warm", href: "/experiments/B.3-hashed-mix-full-corpus" },
-  { id: "eff", x: 876, y: LEAF_Y, w: LEAF_W, label: "first finding", role: "accent", href: "/experiments/first-finding-pareto" },
+  { id: "e01", x: 62, y: LEAF_Y, w: LEAF_W, label: "0.1 baseline", href: "/experiments/0.1-baseline-harness-smoke" },
+  { id: "e02", x: 164, y: LEAF_Y, w: LEAF_W, label: "0.2 prequential", href: "/experiments/0.2-prequential-baseline" },
+  { id: "eref", x: 266, y: LEAF_Y, w: LEAF_W, label: "0.3 cmix ref", role: "reference", href: "/experiments/context-mixing-reference" },
+  { id: "ea1", x: 368, y: LEAF_Y, w: LEAF_W, label: "A.1 fast-weight", role: "fast_weight", href: "/experiments/A.1-fast-weight-memory" },
+  { id: "eb1", x: 470, y: LEAF_Y, w: LEAF_W, label: "B.1 PC refine", role: "pc", href: "/experiments/B.1-surprise-gated-pc-refinement" },
+  { id: "eb2", x: 572, y: LEAF_Y, w: LEAF_W, label: "B.2 warm mix", role: "warm", href: "/experiments/B.2-warmed-mixing" },
+  { id: "eb3", x: 674, y: LEAF_Y, w: LEAF_W, label: "B.3 hashed mix", role: "warm", href: "/experiments/B.3-hashed-mix-full-corpus" },
+  { id: "eb4", x: 776, y: LEAF_Y, w: LEAF_W, label: "B.4 delta mix", role: "fast_weight", href: "/experiments/B.4-delta-mix" },
+  { id: "eff", x: 878, y: LEAF_Y, w: LEAF_W, label: "first finding", role: "accent", href: "/experiments/first-finding-pareto" },
 ];
 
 function endpoints(a: Node, b: Node) {

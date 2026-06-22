@@ -581,3 +581,13 @@ blockquote {
 .cm-bar-p { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); text-align: right; }
 .cm-pending { font-family: var(--font-mono); font-size: 0.78rem; color: var(--paper-dim); margin: 0.4rem 0 0; }
 .cm-pending strong { color: #e8b54d; }
+
+/* generalization two-bar (B.4 delta_mix: delta-only vs the abstaining count on unseen contexts) */
+.genbars { margin: 1.5em 0 0.5em; display: flex; flex-direction: column; gap: 0.55rem; }
+.genbar-row { display: grid; grid-template-columns: 13rem 1fr; align-items: center; gap: 0.8rem; }
+.genbar-label { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); text-align: right; }
+.genbar-track { background: var(--ink-2); border: 1px solid var(--line); border-radius: 5px; height: 1.85rem; overflow: hidden; }
+.genbar-fill { display: flex; align-items: center; justify-content: flex-end; height: 100%; padding-right: 0.55rem; font-family: var(--font-mono); font-size: 0.82rem; font-weight: 600; color: #16130e; white-space: nowrap; }
+.genbar-fill.delta { background: var(--c-fast); }
+.genbar-fill.abstain { background: var(--c-neutral); }
+@media (max-width: 640px) { .genbar-row { grid-template-columns: 8.5rem 1fr; } }

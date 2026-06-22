@@ -128,6 +128,13 @@ export const experiments: NavItem[] = [
     kicker: "EXP B.3",
   },
   {
+    slug: "B.4-delta-mix",
+    href: "/experiments/B.4-delta-mix",
+    title: "B.4 — delta-rule fast weights",
+    blurb: "The first non-hollow Space-B win: a delta-rule fast-weight stream beats the cheap count mixer at matched FLOPs.",
+    kicker: "EXP B.4",
+  },
+  {
     slug: "first-finding-pareto",
     href: "/experiments/first-finding-pareto",
     title: "First finding — the win is Pareto-hollow",
