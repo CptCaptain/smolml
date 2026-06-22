@@ -235,6 +235,36 @@ def test_delta_increment_matches_hand_formula():
     )
 
 
+def test_unsigned_charges_no_sign_hash():
+    # delta_signed=False skips the sign hash in _delta_slot, so the charge must drop 3 ops/feature
+    # (the sign hash) vs the signed default — charge == code.
+    nd = 4
+    signed = build_model("delta_mix", {"delta_dim": 1 << 12, "delta_orders": (3, 4, 5, 6)})
+    unsigned = build_model(
+        "delta_mix", {"delta_dim": 1 << 12, "delta_orders": (3, 4, 5, 6), "delta_signed": False}
+    )
+    d = signed._delta_increment(nd=nd, nd_prev=0, did_update=False)
+    u = unsigned._delta_increment(nd=nd, nd_prev=0, did_update=False)
+    assert d.forward - u.forward == pointwise_flops(3 * nd)  # exactly the skipped sign hash
+
+
+def test_colliding_columns_accumulate_in_delta_write():
+    # Two n-grams that hash to the SAME bucket must SUM their signed updates (np.add.at), exactly
+    # as the read sums them — a plain fancy-index ``W[:, pidx] -=`` would last-write-wins and drop
+    # one. Force a duplicate bucket directly and check both contributions land.
+    m = build_model("delta_mix", {"delta_dim": 4, "delta_orders": (1, 2, 3), "delta_eta": 1.0})
+    ms = m.init_prequential_state().cache
+    ms.last_p_delta = np.full(256, 1.0 / 256)
+    pidx = np.array([0, 0, 1])  # bucket 0 duplicated (a within-key collision)
+    psign = np.array([1.0, 1.0, 1.0])
+    before = ms.W.copy()
+    m._apply_delta_update(ms, pidx, psign, revealed_byte=5)
+    err = np.full(256, 1.0 / 256)
+    err[5] -= 1.0
+    assert np.allclose(ms.W[:, 0] - before[:, 0], -err * 2)  # both colliding features accumulated
+    assert np.allclose(ms.W[:, 1] - before[:, 1], -err * 1)
+
+
 # --- error-correction is load-bearing (delta rule beats plain Hebbian) --------
 class _HebbianMix(DeltaMix):
     """Ablation: replace the error-correcting delta write with a plain Hebbian one

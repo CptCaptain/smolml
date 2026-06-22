@@ -254,21 +254,26 @@ class DeltaMix(HashedMix):
         err = ms.last_p_delta.copy()
         err[revealed_byte] -= 1.0  # softmax-CE gradient of the delta stream w.r.t. z_delta
         scaled = self.config.delta_eta * err  # scale err (V) BEFORE the outer -> V + 2*nd_prev*V
-        ms.W[:, pidx] -= np.outer(scaled, psign)  # rank-1 write over nd_prev columns
+        # Accumulate over the touched columns (np.add.at, NOT ``W[:, pidx] -=``): if two n-grams in
+        # the key collide to one bucket, both signed contributions must SUM — exactly as the read
+        # ``(W[:, idxs] * signs).sum`` sums them. A plain fancy-index ``-=`` is last-write-wins and
+        # would silently drop a colliding feature's update (read/write asymmetry).
+        np.add.at(ms.W, (slice(None), pidx), -np.outer(scaled, psign))
 
     # --- FLOP accounting (parent count charge + the exact delta increment) ----------
     def _delta_increment(self, *, nd: int, nd_prev: int, did_update: bool) -> FlopBreakdown:
         """The delta stream's exact per-byte FLOPs on top of the parent count breakdown.
 
-        Forward (always): ``nd`` column gathers + key hashes (``6`` ops/feature: Fibonacci idx
-        ``3`` + sign ``3``) + sparse matvec ``2*nd*V`` + the (K+1)-th mix row ``2V`` +
-        ``softmax(z_delta)`` ``5V``. Backward (only when a prediction was pending, ``did_update``):
-        the (K+1)-th mixer-gradient row ``2V`` + weight-step ``2`` ALWAYS; plus, only when the prior
-        key had support (``nd_prev > 0``), ``nd_prev`` column gathers + one-hot subtract ``1`` +
-        ``eta`` scale ``V`` + rank-1 write ``2*nd_prev*V`` (matching the ``if nd_prev`` guard in
-        :meth:`step`, so the charge never bills work the code skips)."""
+        Forward (always): ``nd`` column gathers + key hashes (``3`` ops/feature, idx only, plus
+        ``3`` more for the sign hash when ``delta_signed``) + sparse matvec ``2*nd*V`` + the
+        (K+1)-th mix row ``2V`` + ``softmax(z_delta)`` ``5V``. Backward (only when a prediction was
+        pending, ``did_update``): the (K+1)-th mixer-gradient row ``2V`` + weight-step ``2`` ALWAYS;
+        plus, only when the prior key had support (``nd_prev > 0``), ``nd_prev`` column gathers +
+        one-hot subtract ``1`` + ``eta`` scale ``V`` + rank-1 write ``2*nd_prev*V`` (matching the
+        ``if nd_prev`` guard in :meth:`step`, so the charge never bills work the code skips)."""
         v = self.config.vocab_size
-        forward = gather_flops(nd) + pointwise_flops(6 * nd + 2 * nd * v + 2 * v + 5 * v)
+        hash_ops = 6 if self.config.delta_signed else 3  # sign hash is skipped when unsigned
+        forward = gather_flops(nd) + pointwise_flops(hash_ops * nd + 2 * nd * v + 2 * v + 5 * v)
         backward = 0
         if did_update:
             backward = pointwise_flops(2 * v + 2)  # (K+1)-th mixer-gradient row + weight step
