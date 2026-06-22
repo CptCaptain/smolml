@@ -62,12 +62,12 @@ counted**. Config: `table_bits = 20`, `hash_min_order = 4` (so orders 4–6 are 
 | --- | ---: | ---: | ---: |
 | `reference_cold` — context-mix order-3, no warmup | 2.6224 | $4.74\times10^{10}$ | 0.7 GiB |
 | `hashed_o6_cold` — order-6 bounded, no warmup | 2.2570 | $7.73\times10^{10}$ | 2.3 GiB |
-| **`hashed_o6_warm1e11`** — order-6 bounded, ~7 MB warmup | **2.1111** | $\mathbf{1.78\times10^{11}}$ | 4.3 GiB |
-| `hashed_o6_warmfull` — order-6, full 95 MB warmup | *computing* | — | — |
-| `transformer` anchor | *computing* | — | — |
+| `hashed_o6_warm1e11` — order-6 bounded, ~7 MB warmup | 2.1111 | $1.78\times10^{11}$ | 4.3 GiB |
+| **`hashed_o6_warmfull`** — order-6, full 95 MB warmup | **2.0157** | $\mathbf{1.478\times10^{12}}$ | 5.0 GiB |
+| `transformer` anchor | 5.4770 | $1.457\times10^{14}$ | 5.0 GiB |
 
-Three points have **landed**; the last two are **still computing** in a detached run — the *computing*
-cells are deliberate, not placeholders to fill by guesswork (see below).
+All five entrants **landed** (the detached run finished). The full-95 MB-warmup point did **not**
+saturate the fixed table — it improved further (below).
 
 <figure class="figure">
   <BpbFlopChart
@@ -76,7 +76,7 @@ cells are deliberate, not placeholders to fill by guesswork (see below).
     yMax={2.75}
     annotations={[
       { flops: 4.74e10, bpb: 2.6224, text: "order-3 cold — the cheaper reference it beats", dx: 22, dy: -10 },
-      { flops: 1.78e11, bpb: 2.1111, text: "bounded order-6, ~7 MB warmup — best landed", dx: -14, dy: 30 },
+      { flops: 1.478e12, bpb: 2.0157, text: "bounded order-6, full 95 MB warmup — best", dx: -16, dy: 26 },
     ]}
   />
   <figcaption class="figcaption">
@@ -84,9 +84,9 @@ cells are deliberate, not placeholders to fill by guesswork (see below).
     <span class="swatch reference"></span>order-3 cold reference is a *different, cheaper* model — not
     the cold start of the order-6 curve; the <span class="swatch warm"></span>bounded order-6
     `hashed_mix` curve (cold → ~7 MB warmup) sits **below and to the right** of it, so order-6 **beats
-    order-3 per FLOP** under fixed memory. Honest scope: this is the real full-ADR-carve eval (not a
-    4 MB slice), but **two further points are still computing** (`hashed_o6_warmfull`, the transformer
-    anchor) and are not plotted; peak RAM (≤4.3 GiB) lives in the table, not on the axes.
+    order-3 per FLOP** under fixed memory. Honest scope: the real full-ADR-carve eval (not a 4 MB
+    slice); the full-95 MB-warmup point (2.0157) is on the curve, the transformer (5.48 @ 1.46e14) is
+    off-scale so it stays in the table; peak RAM (≤5.0 GiB) lives in the table, not on the axes.
   </figcaption>
 </figure>
 
@@ -100,33 +100,25 @@ cells are deliberate, not placeholders to fill by guesswork (see below).
 3. **The long ADR eval self-warms.** Both *cold* numbers here are far below B.2's 4 MB-slice cold
    (3.21): the 5 M-byte eval stream is long enough that the online mixer adapts *as it streams*, so the
    cold-vs-warm gap shrinks — a property of this metric's long eval, worth remembering.
-4. **vs the transformer.** The full-corpus transformer anchor is still computing; at 32 k (B.2) it was
-   5.55 bpb @ $9.7\times10^{11}$, and on a 5 MB eval its windowed-recompute cost scales to
-   ~$10^{14}$ FLOPs at similar (undertrained) bpb — so the mixers' per-FLOP dominance only widens.
-   *[Confirmed-pending — the anchor has not landed.]*
+4. **The transformer is crushed.** It landed at **5.4770 bpb @ $1.457\times10^{14}$** — ~100,000× the
+   best mixer's FLOPs for 2.7× worse bpb (windowed recompute over 5 MB). The per-FLOP gap is total.
 
-## Still computing — and why the conclusion already holds
+## Full warmup did not saturate the table
 
-`hashed_o6_warmfull` folds the **full 95 MB** prior into the fixed $2^{20}$ table, so order-6 then
-sees ~**30–40 contexts per slot** (heavy collisions): it tests whether *more* warmup keeps helping or
-the table **saturates** (in which case `warm1e11`'s lighter warmup is the sweet spot). The transformer
-anchor is the foregone expensive baseline. Both will land in `runs/full/leaderboard.md`, and this page
-gains the two rows when they finish.
-
-<Callout variant="caveat" title="the two pending rows carry no numbers yet">
-`hashed_o6_warmfull` and the transformer anchor are **still computing** in a detached run — their bpb /
-FLOPs / RAM cells read *computing* on purpose, not as placeholders to be filled in by guesswork. The
-headline — **bounded-memory order-6 scales to the full ADR carve and wins per FLOP** — rests on the
-three landed points and **does not depend on them**.
-</Callout>
+`hashed_o6_warmfull` folds the **full 95 MB** prior into the fixed $2^{20}$ table — order-6 then sees
+~**30–40 contexts per slot** (heavy collisions). The open question was whether that *saturates* (so
+the lighter `warm1e11` would be the sweet spot) or keeps helping. It **kept helping**: full warmup
+reached **2.0157 bpb** vs `warm1e11`'s 2.1111 (−0.10 bpb) for ~8× the warmup FLOPs. So at
+`table_bits = 20` the table still has **headroom** — more warmup pays, and a *bigger* table is the
+lever for going further, not a limit that already binds.
 
 ## Verdict
 
 **Bounded order-6 is a real full-corpus win per FLOP.** Fixed-memory hashing turned an OOM-blocked
-mechanism into one that runs the whole ADR carve in ≤4.3 GiB and still beats order-3 — and pre-warming
-adds a further −0.15 bpb on top. The result extends [B.2](/experiments/B.2-warmed-mixing)'s order-6
-finding from a 4 MB slice to the real 5 MB eval; the open question is no longer *whether* it scales but
-*how far* before the fixed table saturates.
+mechanism into one that runs the whole ADR carve in ≤5.0 GiB and reaches **2.0157 bpb** — beating
+order-3 (2.62) and crushing the transformer (5.48, at ~100,000× the FLOPs). Pre-warming pays all the
+way to the full 95 MB prior (2.26 cold → 2.02 full-warm); the table did not saturate, so a *bigger*
+table is the next lever, not a binding limit.
 
 ## What we learned
 

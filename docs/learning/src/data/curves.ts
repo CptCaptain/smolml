@@ -307,12 +307,11 @@ export const gatedMix: Series[] = [
 // accepted), so memory is fixed regardless of corpus size. On the REAL 5 MB ADR
 // eval stream (first ~95 MB = prior), the order-6 advantage survives the bounding:
 // it beats order-3 per FLOP in ≤4.3 GiB — the first end-to-end full-carve run.
-// THREE LANDED points only; two more (hashed_o6_warmfull, transformer anchor) are
-// still computing in a detached run and are NOT plotted (they live as `computing`
-// rows in the page table — no invented coordinates). hashed_o6 uses --c-warm (the
-// warmed-mixing family); the order-3 cold reference uses the reference blue.
-// NOTE: unlike B.2, the blue point is a DIFFERENT, cheaper model (order-3), not the
-// cold start of the order-6 curve — the page caption says so.
+// All points landed (run complete). The hashed_o6 curve: cold -> ~7 MB -> full-95 MB warmup — full
+// warmup did NOT saturate the 2^20 table (it kept helping: 2.11 -> 2.02). The transformer
+// (5.4770 @ 1.46e14) is off-scale, so it stays out of the plot (table only). hashed_o6 uses --c-warm;
+// the order-3 cold reference uses the reference blue. NOTE: unlike B.2, the blue point is a DIFFERENT,
+// cheaper model (order-3), not the cold start of the order-6 curve — the page caption says so.
 export const hashedMixFull: Series[] = [
   {
     id: "reference_cold",
@@ -330,6 +329,7 @@ export const hashedMixFull: Series[] = [
     points: [
       { flops: 7.73e10, bpb: 2.257, tag: "cold, no warmup — peak 2.3 GiB" },
       { flops: 1.78e11, bpb: 2.1111, tag: "warmed ~7 MB — peak 4.3 GiB" },
+      { flops: 1.478e12, bpb: 2.0157, tag: "full 95 MB warmup — peak 5.0 GiB" },
     ],
   },
 ];

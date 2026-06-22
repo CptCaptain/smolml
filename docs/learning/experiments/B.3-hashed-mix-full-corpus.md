@@ -24,9 +24,9 @@ and charged honestly (gather like the dict it replaces + the explicit slot arith
 | --- | ---: | ---: | ---: |
 | `reference_cold` — context-mix order-3, no warmup | 2.6224 | 4.74e10 | 0.7 GiB |
 | `hashed_o6_cold` — order-6 bounded, no warmup | 2.2570 | 7.73e10 | 2.3 GiB |
-| **`hashed_o6_warm1e11`** — order-6 bounded, ~7 MB warmup | **2.1111** | 1.78e11 | 4.3 GiB |
-| `hashed_o6_warmfull` — order-6, full 95 MB warmup | *computing* | — | — |
-| `transformer` anchor | *computing* (cf. B.2: 5.55 @ 9.7e11 on 32 k) | — | — |
+| `hashed_o6_warm1e11` — order-6 bounded, ~7 MB warmup | 2.1111 | 1.78e11 | 4.3 GiB |
+| **`hashed_o6_warmfull`** — order-6, full 95 MB warmup | **2.0157** | 1.478e12 | 5.0 GiB |
+| `transformer` anchor | 5.4770 | 1.457e14 | 5.0 GiB |
 
 `table_bits = 20`, `hash_min_order = 4` (orders 4–6 hashed).
 
@@ -40,18 +40,16 @@ and charged honestly (gather like the dict it replaces + the explicit slot arith
 3. **The long ADR eval self-warms.** Both *cold* numbers here are far below B.2's 4 MB-slice cold
    (3.21): the 5 M-byte eval stream is long enough that the online mixer adapts *as it streams*, so
    the cold-vs-warm gap shrinks — a property of the metric's long eval, worth remembering.
-4. **vs the transformer.** The full-corpus transformer anchor is still computing; at 32 k (B.2) it
-   was 5.55 bpb @ 9.7e11, and on a 5 MB eval its windowed-recompute cost scales to ~1e14 FLOPs at
-   similar (undertrained) bpb — so the mixers' per-FLOP dominance only widens. *[Confirmed-pending.]*
+4. **The transformer is crushed.** Landed at **5.4770 bpb @ 1.457e14** — ~100,000× the FLOPs of the
+   best mixer for 2.7× worse bpb (windowed recompute over 5 MB). The per-FLOP gap is total.
 
-## Still computing (refine, don't change, the conclusion)
+## Full warmup did not saturate the table
 
 `hashed_o6_warmfull` folds the **full 95 MB** prior into the fixed 2²⁰ table — order-6 then sees
-~30–40 contexts/slot (heavy collisions), so this tests whether more warmup keeps helping or the
-table **saturates** (and `warm1e11`'s lighter warmup is the sweet spot). The transformer anchor is
-the foregone expensive baseline. Both land in `runs/full/leaderboard.md`; this note will gain the
-two rows when they finish. The headline conclusion — *bounded-memory order-6 scales to the full ADR
-carve and wins per FLOP* — does not depend on them.
+~30–40 contexts/slot (heavy collisions). The question was whether that saturates (so the lighter
+`warm1e11` would be the sweet spot) or keeps helping. It **kept helping**: full warmup reached
+**2.0157 bpb** vs `warm1e11`'s 2.1111 (−0.10 bpb) for ~8× the warmup FLOPs. At `table_bits=20` the
+table still has headroom — more warmup pays, and a *bigger* table is the lever for going further.
 
 ## What we learned
 
@@ -59,9 +57,9 @@ carve and wins per FLOP* — does not depend on them.
    compression technique) is what let the proven order-6 win run at full-corpus scale. Reusable for
    every future mixing candidate.
 2. **The order-6 win is robust to bounding** at feasible memory (it didn't collapse to order-3).
-3. **Collision saturation is the next knob.** Pushing warmup toward the full 95 MB into a fixed
-   table eventually trades count fidelity for memory; the right move for *more* warmup is a *bigger*
-   table, not more data into a small one — the classic cmix memory↔accuracy frontier.
+3. **The table didn't saturate — yet.** Full-95 MB warmup into the fixed 2²⁰ table still *helped*
+   (2.11 → 2.02), so collisions haven't bound; pushing warmup *further* is a *bigger-table* lever
+   (the classic cmix memory↔accuracy frontier), not a limit that already binds.
 
 ## Reproduce
 

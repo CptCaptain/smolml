@@ -96,9 +96,9 @@ its *transductive handicap*, not its structure; the bar is now `warm_mix`. See
 The engineering unlock that ran the **full enwik8 ADR carve** (5 MB eval / 95 MB prior): fixed-size
 hashed count tables let the order-6 win run without the ~58 GB OOM unbounded dicts hit. On the full
 5 MB ADR eval, bounded order-6 **survives** — cold 2.2570, ~7 MB-warmed **2.1111** bpb (vs order-3's
-2.6224), in fixed ≤4.3 GiB, far below the transformer. Pre-warming helps beyond the long eval's
-self-warming. Full-95 MB-warmup (collision-saturation test) + transformer anchor still computing in
-`runs/full/`. See `docs/learning/experiments/B.3-hashed-mix-full-corpus.md`.
+2.6224), in fixed ≤5.0 GiB, far below the transformer. Pre-warming pays all the way to the full
+95 MB prior — **2.0157 bpb @ 1.48e12** (the table did NOT saturate: 2.11→2.02); the transformer
+landed at 5.4770 @ 1.46e14 (~100,000× the FLOPs). See `docs/learning/experiments/B.3-hashed-mix-full-corpus.md`.
 
 LOCKED (ADR 0004) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
 total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot

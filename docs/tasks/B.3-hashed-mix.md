@@ -1,9 +1,9 @@
 # Task B.3 — bounded (hashed) count tables → full-corpus mixing
 
-- Status: hashed_mix DONE (108 tests green, cross-reviewed); full ADR-carve run in flight. Early
-  result: bounded order-6 SURVIVES at full corpus (cold 2.2570 / ~7MB-warmed 2.1111 bpb vs order-3
-  2.6224, fixed <=4.3 GiB). Full-95MB-warmup + transformer points computing in `runs/full/`. Branch
-  `task/B.3-hashed-mix` (own PR; human merges).
+- Status: DONE + merged to `main` (d0083dc), live. Full ADR-carve run complete: bounded order-6 on
+  the real 5 MB eval reaches cold 2.2570 / ~7MB-warm 2.1111 / **full-95MB-warm 2.0157** bpb vs order-3
+  2.6224, in fixed ≤5.0 GiB (no OOM); transformer 5.4770 @ 1.46e14. Full warmup did NOT saturate the
+  2²⁰ table (kept helping). 108 tests green; cross-vendor reviewed.
 - Enabler for the **full enwik8 ADR carve** (95 MB prior warmup / 5 MB eval) that B.2 could not run.
 
 ## Why (the measured blocker)
