@@ -36,8 +36,8 @@ from smolml.models import build_model
 from smolml.prequential import (
     PrequentialConfig,
     PrequentialSummary,
-    pretrain,
     prequential_run,
+    pretrain,
 )
 
 CPU = torch.device("cpu")
@@ -57,7 +57,9 @@ DELTA_CFG: dict[str, object] = {
 }
 
 
-def _run(model: str, cfg_extra: dict[str, object], budget: float, run_name: str) -> PrequentialSummary:
+def _run(
+    model: str, cfg_extra: dict[str, object], budget: float, run_name: str
+) -> PrequentialSummary:
     corpus = prepare_enwik8(n_bytes=N_BYTES)
     prior, eval_stream = corpus.prequential_carve(eval_bytes=EVAL_BYTES)
     cfg = PrequentialConfig(
@@ -88,11 +90,20 @@ def _diagnose() -> None:
     prior, eval_stream = corpus.prequential_carve(eval_bytes=EVAL_BYTES)
     model = build_model("delta_mix", dict(DELTA_CFG))
     pretrain(
-        model, prior, flop_budget=PRETRAIN_BUDGET, batch_size=16, seq_len=SEQ_LEN, lr=0.02,
-        weight_decay=0.0, betas=(0.9, 0.95), grad_clip=1.0, seed=SEED, device=CPU,
+        model,
+        prior,
+        flop_budget=PRETRAIN_BUDGET,
+        batch_size=16,
+        seq_len=SEQ_LEN,
+        lr=0.02,
+        weight_decay=0.0,
+        betas=(0.9, 0.95),
+        grad_clip=1.0,
+        seed=SEED,
+        device=CPU,
     )
     k = model.num_predictors  # the delta stream is mixer slot K
-    # Walk the eval stream; accumulate delta-only vs top-order-count-only bits on UNSEEN top n-grams.
+    # Walk the eval stream; accumulate delta-only vs top-order bits on UNSEEN top n-grams.
     state = model.init_prequential_state()
     ms = state.cache
     seen_top: set[bytes] = set()
@@ -120,7 +131,10 @@ def _diagnose() -> None:
         state, _, _ = model.step(state, b, pos)
     w_delta = float(ms.weights[k])
     print("\n--- diagnostics (warmed delta_mix) ---", flush=True)
-    print(f"final mixer weight on the delta stream: {w_delta:+.4f}  (near 0 => dead weight)", flush=True)
+    print(
+        f"final mixer weight on the delta stream: {w_delta:+.4f}  (near 0 => dead weight)",
+        flush=True,
+    )
     if n_unseen:
         print(
             f"on {n_unseen} top-order-UNSEEN contexts: delta-only {d_bits / n_unseen:.4f} bpb  vs  "

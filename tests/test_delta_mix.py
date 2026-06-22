@@ -180,9 +180,7 @@ def test_prediction_at_t_cannot_see_future():
     r1 = prequential_bpb(build_model("delta_mix", cfg), stream, device=CPU, collect_logits=True)
     perturbed = stream.copy()
     perturbed[400] = (int(perturbed[400]) + 7) % 256
-    r2 = prequential_bpb(
-        build_model("delta_mix", cfg), perturbed, device=CPU, collect_logits=True
-    )
+    r2 = prequential_bpb(build_model("delta_mix", cfg), perturbed, device=CPU, collect_logits=True)
     for j in range(401):  # predictions for bytes 0..400 cannot see byte 400
         assert torch.equal(r1.predicted_logits[j], r2.predicted_logits[j])
     assert not torch.equal(r1.predicted_logits[401], r2.predicted_logits[401])
@@ -222,8 +220,10 @@ def test_delta_increment_matches_hand_formula():
     nd, nd_prev = 3, 2
     inc = m._delta_increment(nd=nd, nd_prev=nd_prev, did_update=True)
     exp_fwd = gather_flops(nd) + pointwise_flops(6 * nd + 2 * nd * v + 2 * v + 5 * v)
-    exp_bwd = pointwise_flops(2 * v + 2) + gather_flops(nd_prev) + pointwise_flops(
-        1 + v + 2 * nd_prev * v
+    exp_bwd = (
+        pointwise_flops(2 * v + 2)
+        + gather_flops(nd_prev)
+        + pointwise_flops(1 + v + 2 * nd_prev * v)
     )
     assert inc.forward == exp_fwd
     assert inc.backward == exp_bwd
@@ -264,12 +264,20 @@ def test_delta_captures_structure_beyond_count_cap():
     # full model beats a count-only hashed_mix with the SAME order-1 cap by a wide margin.
     stream = _markov_stream(8000, order=3, alphabet=6, seed=13)
     base = {"max_order": 1, "alpha": 0.5, "lr": 0.02}
-    capped = _bpb(build_model("hashed_mix", {**base, "hash_min_order": 2, "table_bits": 16}), stream)
+    capped = _bpb(
+        build_model("hashed_mix", {**base, "hash_min_order": 2, "table_bits": 16}), stream
+    )
     delta = _bpb(
         build_model(
             "delta_mix",
-            {**base, "hash_min_order": 2, "table_bits": 16, "delta_dim": 1 << 14,
-             "delta_orders": (2, 3, 4), "delta_eta": 0.3},
+            {
+                **base,
+                "hash_min_order": 2,
+                "table_bits": 16,
+                "delta_dim": 1 << 14,
+                "delta_orders": (2, 3, 4),
+                "delta_eta": 0.3,
+            },
         ),
         stream,
     )
@@ -311,8 +319,14 @@ def test_delta_stream_does_not_abstain_on_novel_high_order_context():
 
 # --- leak-free warm handoff + reproducibility ---------------------------------
 def test_eval_does_not_mutate_warm_state():
-    cfg = {"max_order": 4, "hash_min_order": 4, "table_bits": 12, "delta_dim": 1 << 12,
-           "delta_orders": (3, 4, 5), "delta_eta": 0.3}
+    cfg = {
+        "max_order": 4,
+        "hash_min_order": 4,
+        "table_bits": 12,
+        "delta_dim": 1 << 12,
+        "delta_orders": (3, 4, 5),
+        "delta_eta": 0.3,
+    }
     model = build_model("delta_mix", cfg)
     _warm(model, synthetic_text8(3000, seed=1).data, flop_budget=3e7)
     warm_w = model._warm.W.copy()
@@ -336,8 +350,14 @@ def test_two_eval_streams_are_isolated():
 
 
 def test_reproducible_under_fixed_seed():
-    cfg = {"max_order": 4, "hash_min_order": 4, "table_bits": 14, "delta_dim": 1 << 13,
-           "delta_orders": (3, 4, 5, 6), "delta_eta": 0.3}
+    cfg = {
+        "max_order": 4,
+        "hash_min_order": 4,
+        "table_bits": 14,
+        "delta_dim": 1 << 13,
+        "delta_orders": (3, 4, 5, 6),
+        "delta_eta": 0.3,
+    }
     prior = synthetic_text8(3000, seed=1).data
     eval_stream = synthetic_text8(1200, seed=2).prequential_carve(eval_bytes=400)[1]
     b = []
