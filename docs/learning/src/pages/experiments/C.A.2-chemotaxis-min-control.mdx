@@ -1,0 +1,173 @@
+---
+title: C.A.2 — chemotaxis_min (the FLOP-floor win)
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import RegretFlopChart from "../../components/RegretFlopChart.astro";
+import HBars from "../../components/HBars.astro";
+import { chemotaxisControl } from "../../data/curves";
+
+<Layout
+  title="C.A.2 — chemotaxis_min (the FLOP-floor win)"
+  kicker="EXP C.A.2"
+  blurb="Five hand-coded run-and-tumble scalars reach lower regret than the transformer bar at ~6 orders of magnitude fewer FLOPs. A genuine loss-per-FLOP win — and a FLOP-floor result that exposes the rung's stationarity limit."
+  related={[
+    { href: "/concepts/in-context-control", title: "In-context control & chemotaxis" },
+    { href: "/experiments/C.A.1-reservoir-control", title: "C.A.1 — reservoir control candidates" },
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — plot the floor first" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+  ]}
+>
+
+<Callout variant="insight" title="lower regret at ~6 OOM fewer FLOPs — the only candidate to beat the bar">
+`chemotaxis_min` reaches **0.180 regret at $2.70\times10^{5}$ total FLOPs** with **5 parameters**. The
+[transformer bar](/concepts/in-context-control)'s cheapest point is **0.229 at $2.97\times10^{11}$** with
+148,608 params — so chemotaxis_min is **lower-regret at ~6 orders of magnitude fewer FLOPs**. At any FLOP
+budget the transformer can reach, it already sits in the lower-left; the transformer only pushes regret to
+0.141 by spending $2.96\times10^{12}$ FLOPs — about **7 orders of magnitude** more.
+</Callout>
+
+<Callout variant="caveat" title="this is a FLOP-floor win on a stationary rung — do not overclaim">
+The [C.A.0 rung](/concepts/in-context-control)'s optimal policy is a **stationary reactive
+run-and-tumble**: a rate-agnostic reactor clears every held-out drift rate, because the rung does **not yet
+isolate** in-context drift-*rate* inference. `chemotaxis_min` **is** that hand-coded run-and-tumble —
+essentially the **distillation source itself** — so it nails the rung at ~zero cost while the transformer
+pays ~7 OOM more FLOPs to *approximately learn the same fixed reaction*. Read this as "**the rung's cheap
+optimum exposed**," **not** "minimal organisms beat transformers at control in general." It strengthens the
+documented case for a within-episode-*learner* source (a "C.A.0b") that would demand genuine in-episode
+inference and re-open the gap.
+</Callout>
+
+**Status:** mechanism sound, honestly metered, FLOP accounting cross-vendor (codex) audited — and on the
+headline **regret-per-FLOP** metric it **BEATS the bar** (decisively, on the FLOP axis), with the
+load-bearing caveat above. **Concepts:** [in-context control](/concepts/in-context-control),
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws), [Source-(iv)](/concepts/source-iv-advantage).
+**Sibling:** [C.A.1 — reservoir candidates](/experiments/C.A.1-reservoir-control), which clear the floor
+but lose on regret.
+
+## Intuition — a bacterium with almost no machinery
+
+A bacterium does [chemotaxis](/concepts/in-context-control) with essentially no hardware: it **integrates**
+the concentration it is smelling, asks "am I improving?", keeps its heading while the signal **rises**, and
+**reverses** (tumbles) when it **drops**. The "in-context adaptation" is the **integrator state** — a leaky
+baseline tracking the local gradient — *not* weight learning. So the whole controller is a handful of
+learnable scalars plus a few pointwise operations per step, and its total FLOPs are dominated by the (very
+cheap) eval rollout.
+
+## The math — five scalars
+
+`chemotaxis_min` has **5 learnable scalars**: leak $\lambda$, gain $g$, `stay_bias`, `climb`, and
+`sharpness`. Per step, with sensed concentration $c$ and leaky baseline $b$:
+
+$$s = c - b \quad (\text{surprise}), \qquad b \leftarrow (1-\lambda)\,b + \lambda\,c \quad (\text{integrator update})$$
+
+The action logits are **run-and-tumble around the current heading**: *keep* $= g\cdot s$ on the last
+direction, *reverse* $= -g\cdot s$, and *STAY* $= \texttt{stay\_bias}$. So a rising signal ($s &gt; 0$)
+reinforces the current heading and a falling signal flips it — exactly run-and-tumble. The `climb` and
+`sharpness` scalars shape the world-model head (a peak placed one level up-gradient) and the logit
+temperature. Everything is pointwise.
+
+<Callout variant="note" title="FLOP honesty">
+Every op is charged via `pointwise_flops`: $26 + 5L$ per step $\approx$ **66** at $L = 8$ levels. The
+cross-vendor review corrected this count **up** from an initial under-count, to include the compares, the
+where-selects, and the logit construction. `num_params = 5`. There is no matvec and no backward pass to
+speak of — the cost floor is the rollout itself.
+</Callout>
+
+## Result — beats the bar on the FLOP axis
+
+<figure class="figure">
+  <RegretFlopChart
+    series={chemotaxisControl}
+    yMin={0}
+    yMax={0.55}
+    annotations={[
+      { flops: 2.7e5, regret: 0.18, text: "chemotaxis_min — 5 params", dx: 12, dy: -30 },
+      { flops: 2.97e11, regret: 0.229, text: "transformer bar — ~6 OOM more FLOPs", dx: -10, dy: 28 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Regret vs the μ-seeing oracle (y, lower = better; 0 = the oracle) against total FLOPs (x, log scale),
+    all train + eval-rollout FLOPs counted. The lone <span class="swatch chemotaxis"></span>`chemotaxis_min`
+    point sits at the **far lower-left** — the best **regret-per-FLOP** on the chart: lower regret than the
+    <span class="swatch transformer"></span>`transformer bar`'s **cheapest** point (0.229) at ~6 orders of
+    magnitude fewer FLOPs. The bar reaches lower *absolute* regret (0.171, then 0.141) only at its far-right
+    end — **~7 orders of magnitude more FLOPs**. **Lower-left wins.**
+  </figcaption>
+</figure>
+
+At ~0 distillation (0 train steps): **regret 0.180 at $2.70\times10^{5}$ FLOPs**, reward **0.753**. Within a
+single episode it climbs and then tracks — the second-half reward dwarfs the first:
+
+<figure class="figure">
+  <HBars
+    bars={[
+      { label: "random policy floor", pct: 36.5, text: "0.365", accent: "neutral" },
+      { label: "chemotaxis_min — 1st half of episode", pct: 66.2, text: "0.662", accent: "chemotaxis" },
+      { label: "chemotaxis_min — 2nd half of episode", pct: 84.4, text: "0.844", accent: "chemotaxis" },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Within-episode mean reward (higher = better, so **longer = better**; bars scaled to the max
+    concentration of 1.0). The <span class="swatch chemotaxis"></span>second half (**0.844**) far exceeds
+    the first (**0.662**) — the "climb, then track" signature — and both tower over the
+    <span class="swatch neutral"></span>random floor (**0.365**).
+  </figcaption>
+</figure>
+
+## The counterintuitive twist — distillation makes it *worse*
+
+Distilling `chemotaxis_min` (CE on the next token) **raises** its regret, because cross-entropy optimizes
+next-token **prediction** at the expense of **reward-optimality** — and the cheapest point is already
+reward-optimal:
+
+| distillation steps | regret ↓ |
+| ---: | ---: |
+| 0   | **0.180** |
+| 100 | 0.191 |
+| 400 | 0.251 |
+
+Meanwhile the **world model improves** under distillation (world-model bits fall **4.37 → 2.04** from 0 to
+400 steps) — prediction gets sharper exactly as control gets worse. The two objectives pull apart, and on
+this rung the **zero-distillation, reward-optimal point is the one to keep**.
+
+## Verdict — BEATS THE BAR (on the FLOP axis), with the caveat
+
+`chemotaxis_min` is the **only** Space-C candidate to beat the transformer bar: lower regret at ~6 OOM
+fewer FLOPs and 5 vs 148,608 params. But it is a **FLOP-floor** result — the hand-coded optimum of a
+*stationary* rung — so it is honest evidence for loss-per-FLOP and a sharp pointer at the rung's limit,
+**not** a claim that minimal organisms out-control transformers in general.
+
+## What we learned
+
+1. **The rung has a cheap optimum, and we just found it.** On a stationary run-and-tumble task the optimal
+   policy is a fixed reaction; five hand-tuned scalars *are* that reaction, so they take the per-FLOP metric
+   outright while the transformer spends ~7 OOM more FLOPs to approximate the same thing.
+2. **Distillation ≠ improvement when the objectives diverge.** CE-distillation sharpened prediction
+   (world-model bits 4.37 → 2.04) while *degrading* reward — a clean reminder that the world-model bits are
+   a within-policy diagnostic, never the control objective.
+3. **Plot the floor first — the lesson generalizes from bytes to control.** Just as a free frequency model
+   exposed the [first finding](/experiments/first-finding-pareto)'s Pareto-hollow win, the cheap fixed
+   reaction exposes how much of this rung is *stationary*. The fix is a harder rung: a within-episode-learner
+   distillation source (a "C.A.0b") that demands genuine in-context drift-rate inference and would re-open
+   the gap the transformer currently pays so much to cross.
+
+<Callout variant="note" title="reproduce">
+Model: `smolml/models/chemotaxis_min.py` (5 scalars). Driver:
+`uv run python -m smolml.experiments.chemotaxis_min_control`. Regret and within-episode reward are read off
+held-out drifting episodes; the rollout's pointwise FLOPs are counted via `pointwise_flops` (ADR 0004), so
+the $2.70\times10^{5}$ total is honest.
+</Callout>
+
+## See also
+
+- [In-context control & chemotaxis](/concepts/in-context-control) — the rung, the regret metric, the transformer bar, and the documented stationarity limitation this result exposes.
+- [C.A.1 — reservoir control candidates](/experiments/C.A.1-reservoir-control) — the sibling family that clears the random floor but loses on regret.
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — why "lower regret at fewer FLOPs" is the win that matters, and the shared x-axis.
+- [First finding — plot the floor first](/experiments/first-finding-pareto) — the Pareto-hollow lesson, here carried onto control.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the discipline of comparing against the cheap baseline before claiming a win.
+
+</Layout>

@@ -1,0 +1,201 @@
+---
+title: C.A.1 — reservoir control candidates (frozen and online-plastic)
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import RegretFlopChart from "../../components/RegretFlopChart.astro";
+import HBars from "../../components/HBars.astro";
+import { reservoirControl } from "../../data/curves";
+
+<Layout
+  title="C.A.1 — reservoir control candidates"
+  kicker="EXP C.A.1"
+  blurb="Two echo-state reservoir controllers on the chemotaxis rung: a distilled-frozen readout (C.A.1) and an online reward-modulated plastic readout (C.A.1b). Both clear the random floor; neither beats the transformer bar on regret — failures are first-class data."
+  related={[
+    { href: "/concepts/in-context-control", title: "In-context control & chemotaxis" },
+    { href: "/experiments/C.A.2-chemotaxis-min-control", title: "C.A.2 — chemotaxis_min (the FLOP-floor win)" },
+    { href: "/concepts/fast-weight-memory", title: "Fast-weight associative memory" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+  ]}
+>
+
+<Callout variant="caveat" title="both lose on regret — read as honest negatives">
+Neither reservoir controller beats the [transformer bar](/concepts/in-context-control) on the headline
+metric. C.A.1 (distilled-frozen readout) clears the random floor and regret falls with compute, but it
+**caps above the bar**. C.A.1b (online-plastic readout) does **genuine in-episode learning at ~0
+distillation** — the purest Source-(iv) dynamics in the suite — but its regret is ~2.2× the bar's. We log
+them as carefully as a win: a fixed random reservoir + a linear readout is a weaker controller than the
+transformer's learned representation.
+</Callout>
+
+**Status:** mechanism sound, honestly metered, FLOP accounting cross-vendor (codex) audited — and on the
+headline **regret-per-FLOP** metric, **both variants LOSE**. **Concepts:**
+[in-context control](/concepts/in-context-control), [fast-weight memory](/concepts/fast-weight-memory),
+[Source-(iv)](/concepts/source-iv-advantage),
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws). **Sibling:**
+[C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control), the one candidate that beats the bar.
+
+## The bet (Source-(iv))
+
+The reservoir family bets on the structural [loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws)
+edge: a **fixed random recurrent core is free to train** (frozen ⇒ zero backward pass), so the only
+"learning" cost is a **linear readout**. If a rich enough random memory plus a cheap readout could match
+the transformer's learned controller, you would get the bar's skill at a fraction of the backward FLOPs.
+Two variants test two ways to pay for the readout — distill it offline (C.A.1), or grow it online at eval
+(C.A.1b).
+
+## Intuition — an echo-state network
+
+A **reservoir** (echo-state network) is a large pool of randomly-wired recurrent units. You never train
+the recurrence; you train only a linear readout off its state. The reservoir's whole job is to be a rich,
+*fading* memory: its state $h_t$ is a nonlinear echo of the recent input trajectory, so a linear readout
+can pick off whatever feature it needs. On the [chemotaxis tape](/concepts/in-context-control),
+"in-context adaptation" is just the reservoir **state** echoing the recent sense/act history — there is no
+weight change at eval, exactly analogous to a transformer carrying its [KV
+cache](/concepts/fast-weight-memory) as memory.
+
+## The math — frozen core, trained readout (C.A.1)
+
+$$h_t = (1-\lambda)\,h_{t-1} + \lambda \tanh\!\big(W_{in}[:,\text{token}] + W_{res}\,h_{t-1}\big), \qquad \text{logits} = W_{out}\,h_t + b$$
+
+$W_{in}$ and $W_{res}$ are **frozen** random matrices (spectral radius $\rho = 0.9$ for the echo-state
+property) and are **counted in `num_params`** for memory parity — but they form no autograd graph, so they
+cost **zero backward**. Per token, the forward pass is the $W_{res}\,h$ matvec ($2 d_{res}^2$, the dominant
+term) plus the readout ($2\,V d_{res}$) plus pointwise ops; the backward pass is **only** the readout's
+$dW_{out},\,db_{out}$ — not the usual 2×-forward tax, because the frozen recurrence has no gradient. Cost is
+$O(d_{res}^2)$ per step and **context-independent** (versus the transformer's $O(n_{\text{layers}} d^2 +
+\text{context}\cdot d)$).
+
+<Callout variant="note" title="sizing for parity">
+$d_{res} = 374 \Rightarrow$ **148,115 params** $\le$ the bar's 148,608 ($W_{res}$ alone is 139,876). Only
+**~4,125 params — the readout — are trainable.** Same parameter budget as the transformer; a sliver of it
+learns.
+</Callout>
+
+## The plastic twist — learning at eval (C.A.1b)
+
+C.A.1b keeps the same frozen core but makes the readout **plastic**: a working copy of $(W, b)$ lives in
+the decode state and adapts **online during the rollout** via gradient-free local rules — so distillation
+is ≈ zero and essentially **all "learning" happens at eval**, inside `step`, counted FLOP-for-FLOP. Two
+rules fire once the reward and target are observable:
+
+- **World model** (concentration columns) — an online softmax **delta** rule: $W[\text{conc}] \leftarrow W[\text{conc}] + \eta_{wm}\,(\text{onehot}(c) - \text{softmax}(\hat c)) \otimes h_{\text{action}}$.
+- **Policy** (action columns) — **reward-modulated Hebbian** with a leaky baseline, reward proxy $r = c/(L-1)$: $W[\text{action}] \leftarrow W[\text{action}] + \eta_{pol}\,(r - \bar r)\,\text{onehot}(a_{\text{taken}}) \otimes h_{\text{conc}}$.
+
+A fast baseline makes $(r - \bar r) \approx \Delta\text{concentration}$, turning the policy rule into an
+approximate **online run-and-tumble learner**. Every update FLOP is charged to `step.backward`
+(cross-vendor audited); the rules are gradient-free, local, and $O(d_{res}^2)$ per step.
+
+<Callout variant="caveat" title="param parity, not all-memory parity">
+`num_params` is **148,115** — param-axis parity with the bar. But the plastic readout's eval working copy
+adds **~4k floats of eval state**, analogous to the transformer's KV cache / [fast-weight
+memory](/concepts/fast-weight-memory) (also excluded from `num_params`). State it honestly: this is
+parameter-axis parity, **not** full all-memory parity.
+</Callout>
+
+## Result — both clear the floor, neither beats the bar
+
+<figure class="figure">
+  <RegretFlopChart
+    series={reservoirControl}
+    yMin={0}
+    yMax={0.55}
+    annotations={[
+      { flops: 9.18e11, regret: 0.278, text: "reservoir bottoms out above the bar", dx: -12, dy: -24 },
+      { flops: 1.22e9, regret: 0.501, text: "C.A.1b — online-plastic, regret 0.501", dx: 22, dy: 6 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Regret vs the μ-seeing oracle (y, lower = better; 0 = the oracle) against total FLOPs (x, log scale),
+    at fixed params, all train + eval-rollout FLOPs counted. The
+    <span class="swatch transformer"></span>`transformer bar` curve is the lower-left frontier; the
+    <span class="swatch reservoir"></span>`reservoir` (frozen-readout) curve sits **above** it and never
+    reaches it, even at 3× the bar's cheapest budget; the lone
+    <span class="swatch reservoir_plastic"></span>`reservoir + plastic readout` point is far cheaper
+    (~0 distillation) but its regret is highest. Lower-**left** wins — and only the bar gets there.
+  </figcaption>
+</figure>
+
+**C.A.1 — distilled-frozen readout.** Regret falls monotonically with compute (the loss-per-FLOP discipline
+holds), but it bottoms out **above** the bar:
+
+| distill steps | total FLOPs | regret ↓ | reward ↑ | wm bits |
+| ---: | ---: | ---: | ---: | ---: |
+| 150  | $9.29\times10^{10}$ | 0.494 | 0.439 | 1.59 |
+| 600  | $3.68\times10^{11}$ | 0.371 | 0.562 | 1.38 |
+| 1500 | $9.18\times10^{11}$ | 0.278 | 0.655 | 1.29 |
+
+At $9.18\times10^{11}$ FLOPs — **3× the bar's cheapest budget** ($2.97\times10^{11}$) — the reservoir
+reaches only **0.278 regret**, still worse than the bar's **0.229**. The structural backward-FLOP edge is
+real, but a linear readout over a fixed random reservoir is a weaker controller than the transformer; the
+**fixed representation caps the achievable regret**.
+
+**C.A.1b — online-plastic readout.** At ~0 distillation it costs only $1.22\times10^{9}$ total FLOPs —
+**~243× cheaper** than the bar's cheapest point — and it genuinely learns *within the episode*: the
+second-half reward beats the first, and both clear the random floor.
+
+<figure class="figure">
+  <HBars
+    bars={[
+      { label: "random policy floor", pct: 36.5, text: "0.365", accent: "neutral" },
+      { label: "C.A.1b — 1st half of episode", pct: 40.4, text: "0.404", accent: "reservoir_plastic" },
+      { label: "C.A.1b — 2nd half of episode", pct: 46.0, text: "0.460", accent: "reservoir_plastic" },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Within-episode mean reward (higher = better, so **longer = better**; bars scaled to the max
+    concentration of 1.0). The <span class="swatch reservoir_plastic"></span>second half (**0.460**) beats
+    the first (**0.404**), and both clear the <span class="swatch neutral"></span>random floor (**0.365**)
+    — the signature that the plastic readout is **learning online during the rollout**, with essentially no
+    distillation.
+  </figcaption>
+</figure>
+
+Its headline regret is **0.501** — ~2.2× the bar's 0.229. So C.A.1b occupies a distinct **ultra-cheap /
+modest-skill** regime: real Source-(iv) online learning, but well short of the lower-left.
+
+<Callout variant="caveat" title="honest robustness of the online signal">
+Floor-beating is **robust**: +0.05…+0.09 reward across horizons {16, 32, 64} × seeds {0, 1, 2}. The
+*within-episode* 2nd-&gt;1st-half signal is positive at seed 0 but **seed-sensitive under env drift** — a
+documented honesty caveat, not a cherry-pick. The online world model stays poor (wm bits ≈ **23**); it is
+the **reward/policy** that improves, not prediction.
+</Callout>
+
+## Verdict — LOSES on regret (both variants)
+
+Both reservoir controllers are **honest negatives** on the headline regret-per-FLOP metric. C.A.1 caps
+above the bar; C.A.1b is genuinely-online but modest. A fixed random reservoir plus a linear readout
+underperforms the transformer's learned representation on control.
+
+## What we learned
+
+1. **A fixed random reservoir caps achievable regret.** The frozen core buys a real backward-FLOP
+   discount, but its representation is not expressive enough for a *linear* readout to match the
+   transformer's controller — the discount cannot overcome the ceiling.
+2. **Genuine online learning is real, but modest here.** C.A.1b learns within the episode at ~0
+   distillation (2nd-half &gt; 1st-half, clears the floor) — the purest Source-(iv) dynamics in the suite —
+   yet its skill plateaus well above the bar.
+3. **Plot the floor first (again).** Both variants clear the random floor and *look* like learning, but on
+   the per-FLOP regret axis the bar still wins. It is the [Space-B Pareto-hollow
+   reflex](/experiments/first-finding-pareto) carried onto control — and the next page shows a cheap, fixed,
+   hand-tuned reaction taking the metric outright.
+
+<Callout variant="note" title="reproduce">
+Models: `smolml/models/reservoir.py` (`reservoir`, `reservoir_plastic`). Drivers:
+`uv run python -m smolml.experiments.reservoir_control` and
+`uv run python -m smolml.experiments.reservoir_plastic_control`. Regret, reward, and world-model bits are
+read off held-out drifting episodes; all train + eval-rollout FLOPs are counted (ADR 0004).
+</Callout>
+
+## See also
+
+- [In-context control & chemotaxis](/concepts/in-context-control) — the rung, the `ChemoEnv`, the regret metric, and the transformer bar these candidates challenge.
+- [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control) — the five-scalar hand-coded organism that *does* beat the bar (on the FLOP axis), and why that is a floor result.
+- [Fast-weight associative memory](/concepts/fast-weight-memory) — the eval-state-as-memory idea the reservoir leans on (state echo ≈ KV cache).
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win a non-backprop candidate may claim; C.A.1b is the purest such bet here.
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — the same x-axis as every chart, with regret on y.
+
+</Layout>

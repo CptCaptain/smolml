@@ -1,0 +1,41 @@
+---
+import type { Series } from "../data/curves";
+// Marker for the regret-vs-FLOP chart — the control analog of BpbFlopChart.
+// It mounts the SAME shared chart routine (public/js/compendium.js,
+// data-widget="chart"); the `metric` block tells that routine to plot each
+// point's `regret` on y (lower-left = better), relabel the axis/tooltip, and
+// use a 0.1 regret tick step. BpbFlopChart passes no `metric`, so the bpb
+// charts keep their exact behaviour. See PROCESS.md for the file:// model.
+interface Annotation {
+  flops: number;
+  regret: number;
+  text: string;
+  dx?: number;
+  dy?: number;
+}
+interface Props {
+  series: Series[];
+  annotations?: Annotation[];
+  yMin?: number;
+  yMax?: number;
+}
+const { series, annotations, yMin, yMax } = Astro.props;
+const data = {
+  series,
+  annotations,
+  yMin,
+  yMax,
+  metric: {
+    yKey: "regret",
+    yLabel: "← regret vs oracle (lower = better)",
+    tipLabel: "regret",
+    valDecimals: 3,
+    yTickStep: 0.1,
+    aria: "Regret versus total FLOPs; lower-left is better.",
+  },
+};
+---
+
+<figure class="chart" data-widget="chart">
+  <script type="application/json" is:inline set:html={JSON.stringify(data)} />
+</figure>
