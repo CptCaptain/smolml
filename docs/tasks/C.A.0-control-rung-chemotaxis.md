@@ -46,6 +46,20 @@ A 1-D ring of `W` cells (default 16). A unimodal concentration bump peaks at `μ
   `run_and_tumble_policy` (keep direction if concentration rose else reverse — a scripted adaptive
   reference between the two).
 
+## Generalization — the `Environment` seam
+
+`ChemoEnv` implements a minimal `Environment` protocol (typing-only, no runtime cost):
+`reset(seed) -> obs`, `step(action) -> (obs, reward)`, `oracle_action(state) -> action`, plus
+metadata (action set, obs/vocab sizes). `evaluate_control`, the distillation training, the renderer,
+and **every candidate depend only on this protocol** — so they are environment-agnostic. Chemotaxis
+is the minimal instance of "online optimization of a feedback signal under non-stationarity from
+local information"; other feedback tasks (non-stationary bandit, homeostatic setpoint control,
+derivative-free objective) become **sibling rungs** that reuse the entire spine and all candidates
+with zero scorer/candidate changes. C.A.0 builds **only `ChemoEnv`**; the seam makes the rest free.
+The deeper arc (out of scope here): reframing next-token surprise as the feedback signal lets the
+*same* learner span the static rungs and control — chemotaxis in belief space = free-energy
+minimization.
+
 ## Tape format, vocab, and the policy
 
 Symbol vocab = `L` concentration symbols `[0, L)` + 3 action symbols (`LEFT/STAY/RIGHT`) → the model
@@ -63,7 +77,7 @@ asserts action and concentration sub-vocabs are disjoint and that scoring uses t
 
 ## The rollout scorer — `smolml/control_eval.py` (mirrors `eval.py`/`icl_eval.py`)
 
-`evaluate_control(model, *, split="eval", n_episodes, horizon, seed, device, greedy=False) ->
+`evaluate_control(model, *, split="eval", n_episodes, horizon, seed, device, greedy=False, record=False) ->
 ControlResult`. For each held-out episode, run an **autoregressive rollout reusing the existing
 `model.step` channel** (the one `prequential_bpb` uses): `step(state, tok, pos) → (state, logits,
 all_flops)`. The only change from prequential scoring: at **action positions** the next token is
@@ -76,6 +90,10 @@ oracle** (`oracle_reward − agent_reward`, normalized), world-model bits, and t
 the whole rollout. Deterministic given `seed`. **Every rollout FLOP is counted** (folding, online
 adaptation, prediction) and is part of the **total-FLOP** budget (ADR 0004) — eval compute is never
 free here. Bounded memory: the tape is windowed by `context_window` exactly as in `step`.
+
+With `record=True` the returned `ControlResult` also carries a per-step `Trajectory` (peak `μ_t`,
+agent `p_t`, sensed concentration, action, reward, predicted-concentration distribution) — consumed
+by the renderer and by the determinism tests.
 
 ## Training the baseline — Algorithm Distillation
 
@@ -103,6 +121,19 @@ Extend the leaderboard to the control metric: **regret vs oracle** (headline) an
 bits** (secondary) vs **total** training+rollout FLOPs at fixed params `P`; the transformer traces
 the bar. Report `P` and peak state bytes (the memory constraint is first-class). Reuse the plotting.
 
+## Visualization — see the rollout
+
+The rollout records a `Trajectory`; `smolml/envs/render.py` turns it into pictures so a run is
+inspectable ("is it working or not"):
+- `render_rollout(trajectory) -> PNG` — a **spacetime raster** (default, plain matplotlib, no new
+  deps): rows = timesteps, cols = ring cells, color = concentration, with the **peak path** and the
+  **agent path** overlaid, plus a cumulative reward-vs-oracle panel. One static image per episode.
+- `animate_rollout(trajectory, out_gif) -> GIF` — **opt-in** animated playback (`FuncAnimation` +
+  pillow), behind an availability guard (skipped if the writer is unavailable).
+The baseline driver emits a raster (and optional GIF) for a sample held-out episode next to the
+leaderboard. A richer **interactive, scrubbable** rollout viz is a docs-builder deliverable on the
+MDX learning site (the `in-context-control` page), built post-baseline.
+
 ## FLOP honesty & memory
 
 - All rollout compute flows through `model.step` and is counted; eval-rollout FLOPs are part of the
@@ -116,6 +147,7 @@ the bar. Report `P` and peak state bytes (the memory constraint is first-class).
 - `smolml/envs/chemotaxis.py` — `ChemoEnv`, the three reference policies, vocab/slice constants,
   `make_distillation_batch`.
 - `smolml/control_eval.py` — `evaluate_control` + `ControlResult`.
+- `smolml/envs/render.py` — `render_rollout` (spacetime-raster PNG) + `animate_rollout` (opt-in GIF).
 - `smolml/control_train.py` — `distill_train_run`, reusing `train_run`'s FLOP-budget + JSONL shape
   (a future shared loop factored across corpus/icl/control training is welcome, not required here).
 - `smolml/experiments/control_baseline.py` — thin driver: distill-train the transformer across a
@@ -146,9 +178,12 @@ the bar. Report `P` and peak state bytes (the memory constraint is first-class).
     `evaluate_control` on held-out envs returns finite **mean reward strictly above the
     random-policy baseline** (beats chance) and shows within-episode improvement (2nd-half reward >
     1st-half); a leaderboard row is written.
+  - **visualization**: a recorded `Trajectory` is complete and deterministic under fixed seed;
+    `render_rollout` writes a non-empty PNG; the GIF path is exercised behind an availability guard.
 - `docs/harness.md` updated.
-- Per AGENTS.md: a researcher note + an `in-context-control` concept handed to the docs-builder once
-  the baseline lands (confirmed accurate by a researcher).
+- Per AGENTS.md: a researcher note + an `in-context-control` concept (incl. an interactive,
+  scrubbable rollout visualization) handed to the docs-builder once the baseline lands (confirmed
+  accurate by a researcher).
 
 ## Out of scope (later tasks / candidates)
 
@@ -157,3 +192,6 @@ the bar. Report `P` and peak state bytes (the memory constraint is first-class).
 - The static rungs 1–3 (`C.0-icl-harness.md`) — independent; the candidate is graded on both.
 - 2-D / gridworld navigation; multi-peak or adversarial drift; return-conditioned (DT) training;
   reward-channel separate from sensing (documented options, not v1).
+- **Sibling environments** (non-stationary bandit, homeostatic setpoint control, derivative-free
+  objective) — they reuse the `Environment` seam, scorer, and candidates, but are future rungs, not
+  C.A.0.
