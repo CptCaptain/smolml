@@ -497,6 +497,15 @@ independent of context length and overrides `flops`/`step` so the recurrence is 
 backward and the readout only its `dW_out` outer product — no rung change, just the seam.
 Driver: `uv run python -m smolml.experiments.reservoir_control`.
 
+`reservoir_plastic` (Task C.A.1b, same file) reuses that frozen core unchanged but makes the
+readout **adapt ONLINE in `step`** (FLOP-counted): a working copy of `(W, b)` lives in the
+decode cache and is updated by a gradient-free local rule — a softmax **delta rule** on the
+`conc_slice` (world model) and a **reward-modulated Hebbian** rule with a leaky baseline on
+the `action_slice` (policy) — so every adaptation FLOP is charged to `step`'s `backward`
+(ADR 0004). The headline is the **~0-distillation** point (`flop_budget` below one train step
+⇒ 0 train steps; all learning is online); it clears the random floor at a few cents of reward.
+Driver: `uv run python -m smolml.experiments.reservoir_plastic_control`.
+
 ### Regenerating the board
 
 ```python
