@@ -17,6 +17,7 @@ from smolml.models.registry import (
     list_models,
     register_model,
 )
+from smolml.models.reservoir import Reservoir, ReservoirConfig
 from smolml.models.transformer import Transformer, TransformerConfig
 from smolml.models.warm_mix import WarmMix
 
@@ -33,6 +34,8 @@ __all__ = [
     "DeltaMix",
     "DeltaMixConfig",
     "PCRefine",
+    "Reservoir",
+    "ReservoirConfig",
     "PCRefineConfig",
     "Transformer",
     "TransformerConfig",
