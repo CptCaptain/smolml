@@ -69,8 +69,16 @@
       var yScale = function (b) { return PY1 - ((b - ylo) / (yhi - ylo)) * (PY1 - PY0); };
       var xTicks = []; for (var k = Math.ceil(lx0); k <= Math.floor(lx1); k++) xTicks.push(k);
       var step = (yhi - ylo) / 6 > 0.75 ? 1 : 0.5;
+      var yDecimals = step < 1 ? 1 : 0;
       var yTicks = []; for (var v = Math.ceil(ylo / step) * step; v <= yhi + 1e-9; v += step) yTicks.push(Math.round(v * 10) / 10);
-      return { lx0: lx0, lx1: lx1, ylo: ylo, yhi: yhi, xScale: xScale, yScale: yScale, xTicks: xTicks, yTicks: yTicks, step: step };
+      if (yTicks.length === 0) { // tight range: the 0.5/1.0 grid is too coarse — pick a 1-2-5 nice step
+        var raw = (yhi - ylo) / 4, p10 = Math.pow(10, Math.floor(Math.log10(raw))), cands = [1, 2, 2.5, 5, 10];
+        step = 10 * p10;
+        for (var ci = 0; ci < cands.length; ci++) { if (cands[ci] * p10 >= raw) { step = cands[ci] * p10; break; } }
+        yDecimals = 0; for (var ss = step; yDecimals < 6 && Math.abs(Math.round(ss) - ss) > 1e-9; ss *= 10) yDecimals++;
+        yTicks = []; for (var w = Math.ceil(ylo / step) * step; w <= yhi + 1e-9; w += step) yTicks.push(Math.round(w / step) * step);
+      }
+      return { lx0: lx0, lx1: lx1, ylo: ylo, yhi: yhi, xScale: xScale, yScale: yScale, xTicks: xTicks, yTicks: yTicks, step: step, yDecimals: yDecimals };
     }
 
     function svgString() {
@@ -83,7 +91,7 @@
       s += '<line x1="' + PX0 + '" x2="' + PX0 + '" y1="' + PY0 + '" y2="' + PY1 + '" class="axis"/>';
       L.xTicks.forEach(function (k) { s += '<text x="' + L.xScale(Math.pow(10, k)) + '" y="' + (PY1 + 20) + '" class="tick" text-anchor="middle">10' + sup(k) + "</text>"; });
       s += '<text x="' + ((PX0 + PX1) / 2) + '" y="' + (VB_H - 10) + '" class="axis-label" text-anchor="middle">total FLOPs (log scale) \u2192</text>';
-      L.yTicks.forEach(function (v) { s += '<text x="' + (PX0 - 10) + '" y="' + (L.yScale(v) + 4) + '" class="tick" text-anchor="end">' + v.toFixed(L.step < 1 ? 1 : 0) + "</text>"; });
+      L.yTicks.forEach(function (v) { s += '<text x="' + (PX0 - 10) + '" y="' + (L.yScale(v) + 4) + '" class="tick" text-anchor="end">' + v.toFixed(L.yDecimals) + "</text>"; });
       s += '<text class="axis-label" text-anchor="middle" transform="translate(16 ' + ((PY0 + PY1) / 2) + ') rotate(-90)">\u2190 validation bits-per-byte</text>';
       if (noModelLine && L.yhi >= 7.9) {
         s += '<line x1="' + PX0 + '" x2="' + PX1 + '" y1="' + L.yScale(8) + '" y2="' + L.yScale(8) + '" class="ref-line"/>';
