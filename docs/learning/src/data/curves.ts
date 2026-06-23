@@ -379,3 +379,40 @@ export const deltaMix: Series[] = [
     points: [{ flops: 1.072e10, bpb: 2.4327, tag: "same FLOPs, all on more warm counts" }],
   },
 ];
+
+
+// ── B.4: delta_mix FULL ADR carve (real 5 MB eval, all FLOPs counted) ──
+// The headline: delta_o6_warmfull STRICTLY DOMINATES the previous bar (hashed_o6_warmfull) on BOTH
+// axes — lower bpb (1.8485 vs 2.0157) AND fewer total FLOPs (1.322e12 vs 1.478e12), warming on
+// FEWER bytes (1.2e12 budget vs 1.4e12). The delta point sits BELOW and to the LEFT of the whole
+// hashed warmup curve. Source: runs/full/leaderboard.md. delta = fast_weight (orange).
+export const deltaFull: Series[] = [
+  {
+    id: "hashed_o6_full",
+    label: "hashed order-6 (the previous bar)",
+    role: "warm",
+    kind: "curve",
+    dashed: true,
+    points: [
+      { flops: 7.73e10, bpb: 2.257, tag: "cold, no warmup" },
+      { flops: 1.78e11, bpb: 2.1111, tag: "warmed ~7 MB" },
+      { flops: 1.478e12, bpb: 2.0157, tag: "full 95 MB warmup — the previous bar" },
+    ],
+  },
+  {
+    id: "delta_o6_warmfull",
+    label: "delta_mix (full ~50 MB warmup)",
+    role: "fast_weight",
+    kind: "point",
+    points: [
+      { flops: 1.322e12, bpb: 1.8485, tag: "beats the bar — lower bpb AND fewer FLOPs" },
+    ],
+  },
+  {
+    id: "reference_cold",
+    label: "context-mix order-3 (cheap ref)",
+    role: "reference",
+    kind: "point",
+    points: [{ flops: 4.74e10, bpb: 2.6224, tag: "the cheap ladder" }],
+  },
+];

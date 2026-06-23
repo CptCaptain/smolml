@@ -5,12 +5,12 @@ title: B.4 — delta-rule fast weights (the first non-hollow Space-B win)
 import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import BpbFlopChart from "../../components/BpbFlopChart.astro";
-import { deltaMix } from "../../data/curves";
+import { deltaMix, deltaFull } from "../../data/curves";
 
 <Layout
   title="B.4 — online delta-rule fast weights (the first non-hollow Space-B win)"
   kicker="EXP B.4"
-  blurb="One online delta-rule fast-weight stream beats the cheap count mixer at matched FLOPs — the first Space-B result that is not Pareto-hollow."
+  blurb="One online delta-rule fast-weight stream beats the cheap count mixer at matched FLOPs — and at full corpus beats the warmed-mixing bar outright (1.8485 vs 2.0157 bpb, at fewer FLOPs). The first non-Pareto-hollow Space-B result."
   related={[
     { href: "/concepts/fast-weight-memory", title: "Fast-weight associative memory" },
     { href: "/experiments/A.1-fast-weight-memory", title: "A.1 — fast-weight memory (the bolt-on)" },
@@ -33,8 +33,10 @@ clear the bar that killed all the others.
 </Callout>
 
 **Status:** mechanism sound, honestly metered, cross-vendor reviewed, and — for the first time in a
-Space-B (learning-rule) candidate — **NOT Pareto-hollow** at CI scale. The full-corpus carve verdict is
-**pending**. **Concepts:** [fast-weight memory](/concepts/fast-weight-memory),
+Space-B (learning-rule) candidate — **NOT Pareto-hollow**. Both verdicts are in and both are wins: the
+CI matched-FLOP kill-test PASSES, and the **full ADR carve beats the bar outright** —
+`delta_o6_warmfull` reaches **1.8485 bpb @ 1.322e12 FLOPs**, strictly dominating the previous bar
+(2.0157 @ 1.478e12) on both axes. **Concepts:** [fast-weight memory](/concepts/fast-weight-memory),
 [online context mixing](/concepts/context-mixing), [online warm-start](/concepts/online-warmup),
 [Source-(iv)](/concepts/source-iv-advantage),
 [prequential evaluation](/concepts/prequential-evaluation). **Builds on:**
@@ -171,23 +173,45 @@ still scores **3.73 bpb**:
   </figcaption>
 </figure>
 
-## Full-corpus carve — pending
+## Full-corpus carve — beats the bar
 
-The kill-test is **CI scale** (4 MB slice, $\approx 1\times10^{10}$ FLOPs). Whether the win survives at
-the full-corpus **$1.48\times10^{12}$** bar — where the count tables saturate more and abstain less,
-possibly shrinking the delta edge — is the `delta_o6_warmfull` carve, which was still running detached
-when this page was built:
+The kill-test was **CI scale** (4 MB slice). The real test is the full ADR carve — final **5 MB eval**,
+first **~95 MB prior**, all FLOPs counted, against the **2.0157 bpb @ $1.48\times10^{12}$**
+[B.3](/experiments/B.3-hashed-mix-full-corpus) bar. The concern was that saturating count tables would
+*shrink* the delta edge. The opposite happened — it **grew**:
 
-| run | bpb | total FLOPs | measured against |
-| --- | ---: | ---: | --- |
-| `delta_o6_warmfull` (full 95 MB warmup) | *pending* | $\approx 1.48\times10^{12}$ | the **2.0157** bpb [B.3](/experiments/B.3-hashed-mix-full-corpus) bar |
+| run | bpb | total FLOPs | peak RAM |
+| --- | ---: | ---: | ---: |
+| **`delta_o6_warmfull`** (delta + counts) | **1.8485** | $\mathbf{1.322\times10^{12}}$ | 5.5 GiB |
+| `hashed_o6_warmfull` — the previous bar | 2.0157 | $1.478\times10^{12}$ | 5.0 GiB |
+| `transformer` anchor | 5.4770 | $1.457\times10^{14}$ | 5.0 GiB |
 
-<Callout variant="caveat" title="the full-carve verdict is not in">
-This row carries **no number**. `runs/full/leaderboard.md` had no `delta_o6_warmfull` entry when this
-page was built, so it stays *pending* rather than fabricate a result — honest either way. The CI-scale
-win is **real but modest** (−0.0146 bpb at matched FLOPs); it is the first Space-B result to clear the
-cheap-baseline bar **at all**. The downside is bounded: error-correction prevents A.1's
-marginal-collapse, and the online mixer drives a useless stream's weight → 0 with no bpb blow-up.
+<figure class="figure">
+  <BpbFlopChart
+    series={deltaFull}
+    yMin={1.8}
+    yMax={2.7}
+    annotations={[
+      { flops: 1.322e12, bpb: 1.8485, text: "delta_mix — beats the bar at fewer FLOPs", dx: -8, dy: 26 },
+      { flops: 1.478e12, bpb: 2.0157, text: "the previous (hashed order-6) bar", dx: -16, dy: -16 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    bpb vs total FLOPs on the real 5 MB ADR eval (all FLOPs counted). The
+    <span class="swatch fast_weight"></span>`delta_o6_warmfull` point sits **below and to the left** of
+    the whole <span class="swatch warm"></span>hashed order-6 warmup curve — lower bpb **and** fewer
+    total FLOPs than the previous bar, while warming on *fewer* bytes (1.2e12 budget vs 1.4e12). The
+    transformer (5.48 @ 1.46e14) is off-scale and stays in the table.
+  </figcaption>
+</figure>
+
+<Callout variant="insight" title="the edge grew at scale — delta_mix is the new bar">
+**`delta_o6_warmfull` = 1.8485 bpb @ $1.322\times10^{12}$ FLOPs strictly dominates the bar** (2.0157 @
+$1.478\times10^{12}$) on **both** axes: −0.167 bpb AND fewer total FLOPs. The CI-scale edge was a modest
+−0.0146; at full corpus it grew to −0.167, because as more high-order contexts go novel the exact count
+tables abstain *more often* — exactly where the distributed delta key still carries signal. The first
+candidate to beat the warmed-mixing bar; `delta_mix` is the new bar. The downside stayed bounded:
+error-correction prevents A.1's marginal-collapse, and the mixer drives a useless stream's weight → 0.
 </Callout>
 
 ## What we learned
@@ -200,8 +224,10 @@ marginal-collapse, and the online mixer drives a useless stream's weight → 0 w
    collapse to the byte marginal (an ablation confirms it).
 3. **A distributed key generalizes where exact-match counts abstain** — the +0.8595 mixer weight and the
    3.73-vs-8.0 unseen-context split are the same mechanism seen two ways.
-4. **The verdict is honestly partial.** A modest CI-scale win is established; the full-corpus carve is
-   pending, and the win could shrink where the count tables saturate. Logged as such.
+4. **The edge compounds with scale.** The CI-scale win was modest (−0.0146 bpb); at the full corpus it
+   *grew* to −0.167 — the saturation concern was backwards. As more high-order contexts go novel, the
+   exact tables abstain more and the distributed delta key carries more of the load. `delta_mix` beats
+   the warmed-mixing bar outright and becomes the new bar.
 
 <Callout variant="note" title="scale & reproduce">
 CI-fast kill-test (downloads `enwik8` once; minutes): `uv run python -m smolml.experiments.delta_mix_enwik8`.
