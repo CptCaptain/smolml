@@ -489,6 +489,13 @@ learning shows up as **rising `second_half_reward`** and **falling regret** — 
 quantities the rung ranks on. (World-model bits is a within-policy diagnostic, not
 a cross-run "lower = better" signal; see the metric section.)
 
+**Registered candidates.** `chemotaxis_min` (`smolml/models/chemotaxis_min.py`,
+Task C.A.2) is the FLOP-floor reference: a hand-structured run-and-tumble
+controller with five learnable scalars whose in-context adaptation is a leaky
+integrator (no weight change in `step`), so its honest total FLOPs is dominated by
+the cheap eval rollout — orders of magnitude below the transformer bar. Drive it
+with `uv run python -m smolml.experiments.chemotaxis_min_control`.
+
 ### Regenerating the board
 
 ```python
