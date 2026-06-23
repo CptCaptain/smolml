@@ -90,3 +90,15 @@ def test_rollout_flop_accounting_matches_analytic():
     )
     expected = sum(model.decode_step_flops(k).forward for k in range(1, 2 * cfg.horizon + 1))
     assert res.flops.forward == expected
+
+
+def test_regret_is_oracle_minus_agent_and_positive_for_idle():
+    # An always-STAY agent sits while the oracle climbs+tracks -> positive regret,
+    # and regret is exactly oracle_reward - agent_reward (no sign/normalization slip).
+    cfg = ChemoConfig(width=16, levels=8, horizon=16)
+    model = _FixedActionModel(vocab_size(cfg), 2 * cfg.horizon + 1, action_token(cfg, 1))
+    res = evaluate_control(
+        model, cfg, split="eval", n_episodes=8, seed=0, device=torch.device("cpu"), greedy=True
+    )
+    assert res.regret > 0.0
+    assert math.isclose(res.regret, res.mean_oracle_reward - res.mean_reward, rel_tol=1e-9)

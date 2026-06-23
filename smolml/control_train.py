@@ -51,6 +51,8 @@ class ControlRunSummary:
     final_regret: float
     final_reward: float
     final_world_model_bits: float
+    first_half_reward: float
+    second_half_reward: float
     log_path: str
 
 
@@ -127,6 +129,8 @@ def distill_train_run(
                         "mean_reward": r.mean_reward,
                         "regret": r.regret,
                         "world_model_bits": r.world_model_bits,
+                        "first_half_reward": r.first_half_reward,
+                        "second_half_reward": r.second_half_reward,
                     }
                 )
                 + "\n"
@@ -167,6 +171,8 @@ def distill_train_run(
         final_regret=res.regret,
         final_reward=res.mean_reward,
         final_world_model_bits=res.world_model_bits,
+        first_half_reward=res.first_half_reward,
+        second_half_reward=res.second_half_reward,
         log_path=str(log_path),
     )
     return (summary, model) if return_model else summary

@@ -426,7 +426,12 @@ rollout time pays for it; there is no off-channel compute.
   oracle-optimal. This is what ranks the board.
 - **Secondary — world-model bits.** Mean `−log₂ p(true next concentration)`: how
   well the model predicts the sensor it does **not** control — the learned world
-  model, scored on the concentration slice.
+  model, scored on the concentration slice. **Policy-conditional:** bits accrue
+  over the states the agent visits, so they are *not* comparable across policies
+  or checkpoints — a better tracker dwells near the saturated peak, where drift
+  ticks punish confident predictions and can *raise* bits (observed: the baseline
+  bar's bits rise 1.38→2.11 as regret falls 0.23→0.14). Read it as a within-policy
+  diagnostic, not a cross-run ranking.
 - **vs total FLOPs at fixed params.** Parameter count is held **fixed**; you move
   along the FLOP axis by spending more *distillation* (the baseline sweeps the
   training budget). Each run's reported `total_flops` also folds in its eval
@@ -435,6 +440,15 @@ rollout time pays for it; there is no off-channel compute.
 - **In-context improvement** is visible in `first_half_reward` vs
   `second_half_reward`: a genuine in-context learner does better in the back half
   of an episode, once it has gathered feedback.
+- **Limitation (v1) — adaptation is not fully isolated.** The distillation source
+  (run-and-tumble) is a *stationary reactive* policy: the optimal climb reaction is
+  the same for every drift rate, so a rate-agnostic reactor clears the held-out
+  rates without inferring the drift in-context. The rung is leakage- and
+  memorization-proof (disjoint drift pools, fresh per-episode dynamics, local-only
+  sensing), and `second_half_reward > first_half_reward` confirms the agent climbs
+  onto the peak — but it does not yet *isolate* in-context drift-rate inference from
+  a memorized fixed reaction. Sourcing tapes from a within-episode *learner* (or
+  making drift inference load-bearing) is the documented enhancement for a follow-up.
 
 ### Running the baseline
 
@@ -470,9 +484,10 @@ class MyController(LanguageModel):
 The rung's only env-specific wiring is that `distill_train_run` sets the model
 config's `vocab_size` and `max_seq_len = 2·horizon + 1`; the candidate just
 honors them. A fast-weight / associative-memory mechanism's in-context adaptation
-lives inside `step`, so it is FLOP-counted in the rollout and its learning shows
-up as rising `second_half_reward` and falling world-model bits — exactly the
-quantities the rung measures.
+lives inside `step`, so it is FLOP-counted in the rollout, and its in-context
+learning shows up as **rising `second_half_reward`** and **falling regret** — the
+quantities the rung ranks on. (World-model bits is a within-policy diagnostic, not
+a cross-run "lower = better" signal; see the metric section.)
 
 ### Regenerating the board
 

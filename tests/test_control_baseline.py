@@ -43,9 +43,10 @@ def test_end_to_end_beats_random_and_improves(tmp_path):
         rng_floor.append(tot / chem.horizon)
     floor = float(np.mean(rng_floor))
 
-    # the trained model's held-out mean reward beats the random floor
+    # the trained model beats the random floor AND improves within an episode
+    # (the headline in-context signal: mean 2nd-half reward > 1st-half)
     assert summary.final_reward > floor
-    assert summary.final_reward > 0.0
+    assert summary.second_half_reward > summary.first_half_reward
 
     table, png = regenerate_control(
         tmp_path / "runs", table_path=tmp_path / "lb.md", plot_path=tmp_path / "lb.png"
