@@ -16,6 +16,7 @@ import FastWeightDemo from "../../components/FastWeightDemo.astro";
     { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
     { href: "/concepts/context-mixing", title: "Online context mixing" },
     { href: "/experiments/A.1-fast-weight-memory", title: "A.1 — fast-weight memory" },
+    { href: "/experiments/B.4-delta-mix", title: "B.4 — delta-rule fast weights" },
   ]}
 >
 
@@ -88,10 +89,33 @@ Pareto-hollow and the memory needs literal repetition the corpus does not contai
 - **FLOP fairness:** how are memory reads/writes counted against the core? (Dense $2dV$ each, no
   one-hot shortcut.)
 
+## Two lineages: a Hebbian bolt-on vs an error-correcting stream
+
+The write rule is the whole story. [A.1](/experiments/A.1-fast-weight-memory) used the **Hebbian**
+outer product above — a `+k ⊗ e_b` bump keyed on a transformer's centered residual, **bolted onto** a
+slow gradient core. On a superposed (distributed) key that rule collapses toward the byte marginal,
+and keyed on exact states it needs literal repetition the corpus does not contain — so it stayed
+Pareto-hollow.
+
+[B.4 — `delta_mix`](/experiments/B.4-delta-mix) keeps the fast-weight idea but swaps the learning
+rule for an **error-correcting delta (LMS) update** — the DeltaNet lineage — on a **signed
+feature-hashed**, distributed key, and adds it not to a transformer but to the cheap warmed
+[context mixer](/concepts/context-mixing). Two changes earn the project's first non-hollow Space-B result:
+
+- **Error-correction, not Hebbian.** The update `W[:,j] −= η·φ[j]·(p − onehot(b))` stops moving a
+  feature's weight once it predicts well — no marginal collapse (an ablation confirms delta beats
+  the Hebbian variant on a superposed key).
+- **A distributed key generalizes.** Signed feature-hashing spreads each context across `s` buckets,
+  so `tio → n` is learned once and reused everywhere `tio` appears — exactly where an exact-match
+  count table abstains.
+
+The contrast is the lesson: a fast-weight memory is only as good as its **write rule** and its **key**.
+
 ## See also
 
 - [Source-(iv) advantage](/concepts/source-iv-advantage) — the claim this candidate makes.
 - [Prequential evaluation](/concepts/prequential-evaluation) — where its adaptation FLOPs get charged.
 - [A.1 — fast-weight memory](/experiments/A.1-fast-weight-memory) — the experiment that tested the bet.
+- [B.4 — delta-rule fast weights](/experiments/B.4-delta-mix) — the same idea, reborn as an error-correcting delta rule, that finally clears the bar.
 
 </Layout>

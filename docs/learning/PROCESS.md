@@ -90,7 +90,7 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (12 uses), `Pipeline` (6), `CardGrid` (2),
+- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses), `Pipeline` (6), `CardGrid` (2),
   `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 12 chart instances and
   one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
@@ -122,9 +122,9 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 - **Concepts (8):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
   prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
   predictive-coding, online-warmup.
-- **Experiments (8 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
+- **Experiments (9 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
   context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
-  B.2-warmed-mixing, B.3-hashed-mix-full-corpus, first-finding-pareto. Each renders the shared interactive `BpbFlopChart`
+  B.2-warmed-mixing, B.3-hashed-mix-full-corpus, B.4-delta-mix, first-finding-pareto. Each renders the shared interactive `BpbFlopChart`
   (one plot per page; B.2 is the lone two-plot page — Phase 1 + Phase 2 are distinct experiments;
   harness PNGs stay as artifacts under `experiments/`, not embedded — session 6).
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
@@ -270,3 +270,45 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   &lt;1 FLOP decade ($4.74\times10^{10}$–$1.78\times10^{11}$), wider than B.2 Phase 2, so the log-x
   separation reads cleanly; peak RAM (a new dimension) stays in the table, not on the axes (flagged in
   the caption). Researcher note found internally consistent — no science flagged.
+
+- **2026-06-22 (session 11 — B.4 delta_mix page):** authored the experiment page `B.4-delta-mix` from
+  the researcher note, mirroring B.3/B.2 layout/frontmatter/imports. Tells the first **non-Pareto-hollow
+  Space-B** story: the bet (a count table is a degenerate one-hot-key Hebbian store — zero generalization,
+  only `K` global mixer weights), the mechanism (one online **delta-rule (LMS)** fast-weight stream on a
+  sparse **signed feature-hashed** key, `O(sV)` feasibility crux, ~8.2k FLOPs/byte on the ~15.7k bar), the
+  (iv) story (linear-in-a-fixed-feature-map + convex loss ⇒ exact gradient is a rank-1 outer product,
+  zero backward), the **matched-FLOP kill-test RESULT** (a/b/c on a `BpbFlopChart`; (b) delta 2.4181 beats
+  counts_only 2.4353 and counts_more_warm 2.4327; binding (b vs c) = −0.0146 bpb), the two diagnostics
+  (+0.8595 mixer weight `insight` Callout; the **generalization two-bar** — delta-only 3.73 vs the
+  abstaining count 8.0 on 20,051 unseen contexts), the recurring-reflex `insight` Callout ("beat the cheap
+  baseline at matched FLOPs", B.4 the first Space-B to clear it), and the honest framing (`caveat`: CI win
+  real but modest, full-carve **pending**).
+  - **Full-carve headline = PENDING marker.** `runs/full/leaderboard.md` carried no `delta_o6_warmfull`
+    row at build time, so the $1.48	imes10^{12}$ / 2.0157-bar row is a *pending* table row + caveat — NOT
+    plotted (no invented coordinate), per the note. Used the pending marker, not a real number.
+  - **No new role/token (KISS).** `delta` is colored `fast_weight` (orange) because it IS a fast-weight
+    associative memory — the delta-rule flavor, the A.1 family done right (A.1 was the transformer Hebbian
+    bolt-on that collapsed; both read orange, the lineage). The two count entrants reuse `reference` blue
+    (`counts_only`, the cheap ladder) and `warm` vermilion (`counts_more_warm`). Added the `deltaMix`
+    dataset to `curves.ts` (3 measured points only).
+  - **Wiring (exactly as B.3):** `nav.ts` (EXP B.4 between B.3 and first-finding), experiments index (auto),
+    `ConceptMap` (9th leaf `B.4 delta mix`, role `fast_weight`; re-spaced the bus 8→9 at `LEAF_W=100` and
+    shortened four long leaf labels to fit; added the delta-lineage edge **`warm` → `fwm`** so the warmed
+    ladder now feeds fast-weight memory). Extended the **fast-weight-memory** concept with a "two lineages"
+    section (Hebbian bolt-on vs error-correcting delta-rule / DeltaNet / signed feature-hashing) + related/
+    See-also. Reciprocal links A.1↔B.4 and B.3↔B.4.
+  - **Shared-component change (self-adapt):** `BpbFlopChart` y-tick **fallback** in `compendium.js` — the
+    coarse 0.5/1.0-only step yields **zero** ticks on a tight range (B.4 is 2.40–2.45), so when the
+    existing logic produces 0 ticks it now falls back to a 1-2-5 nice step with step-derived decimals.
+    Verified isolated: simulated every shipped chart's range — each keeps an identical tick set (none hit
+    0 ticks); only tight ranges refine. B.4 renders clean `2.40 / 2.42 / 2.44` labels.
+  - **New static viz (rule of two NOT yet triggered):** the generalization **two-bar** (`.genbars` /
+    `.genbar-row` / `.genbar-label` / `.genbar-track` / `.genbar-fill{.delta,.abstain}` in `global.css`) —
+    delta `--c-fast` orange vs the abstaining count `--c-neutral`, widths = bpb/8.0. First occurrence, so
+    inlined in the page (not factored into a `.astro` component yet); CSS lives in `global.css` for reuse —
+    factor on the second occurrence. `BpbFlopChart` now 13 uses.
+  - Build green (**19 pages**); verified from `file://` (zero console errors): the B.4 chart mounts (3 marks,
+    y-ticks 2.40/2.42/2.44, both annotations, 3-series legend), the two-bar renders (46.6% / 100% with the
+    right role classes), 25 KaTeX spans, no `\u` leaks, and the landing map shows the `B.4 delta mix` leaf,
+    the new `warm`→`fwm` edge, A.1 + B.4 both orange (the lineage), with all three B.4 links resolving.
+    Researcher note found internally consistent — no science flagged.
