@@ -30,7 +30,7 @@ baseline. Status: `idea` → `queued` → `running` → `beat-baseline` / `lost`
 | Predictive coding | Local error-driven updates; **surprise-gated settling** (B.1) | Spend settling only on hard bytes — more loss-reduction per FLOP | **tested (B.1): lever real, mechanism Pareto-hollow on synthetic; enwik8 control pending** |
 | Equilibrium propagation | Energy-based local learning | Single mechanism for inference + learning | idea |
 | Feedback alignment / target prop | Replace exact gradients with cheaper signals | Avoids weight transport; cheaper backward | idea |
-| Fast-weight programmers / delta-rule memory | Online error-correcting (delta/LMS) write on a distributed key — `delta_mix` (B.4) | Generalizes across contexts exact count tables abstain on; exact gradient = error, no backward pass | **tested (B.4): CI kill-test PASS — first non-hollow Space-B win; full-carve headline pending** |
+| Fast-weight programmers / delta-rule memory | Online error-correcting (delta/LMS) write on a distributed key — `delta_mix` (B.4) | Generalizes across contexts exact count tables abstain on; exact gradient = error, no backward pass | **WON (B.4): beats the bar — 1.8485 @ 1.322e12 strictly dominates 2.0157 @ 1.478e12; first Space-B win** |
 | Evolution strategies / zeroth-order | Gradient-free parameter search | No backward pass; embarrassingly parallel | idea |
 
 ## Notes / honest priors
@@ -113,8 +113,10 @@ CI matched-FLOP kill-test (real enwik8 4 MB slice, total ≈1.07e10): **delta 2.
 beats spending them on more warm counts (−0.0146 bpb at matched total). Diagnostics: the mixer
 learns weight **+0.86** on the delta stream (load-bearing, NOT A.1's dead gate); on 20,051
 top-order-**unseen** contexts delta-only scores **3.73 bpb vs the abstaining count's 8.0** (the
-generalization mechanism, confirmed at scale). Full 5 MB-ADR-carve headline vs the 2.0157 bar:
-running detached (`delta_o6_warmfull`). See `docs/learning/experiments/B.4-delta-mix.md`.
+generalization mechanism, confirmed at scale). **Full 5 MB-ADR-carve: `delta_o6_warmfull` =
+1.8485 bpb @ 1.322e12 FLOPs — strictly dominates the 2.0157 @ 1.478e12 bar (−0.167 bpb AND fewer
+FLOPs).** The first candidate to beat the warmed-mixing bar; `delta_mix` is the new bar. See
+`docs/learning/experiments/B.4-delta-mix.md`.
 
 LOCKED (ADR 0004) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
 total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot

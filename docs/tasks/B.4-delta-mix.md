@@ -1,12 +1,13 @@
 # Task B.4 — online delta-rule fast-weight memory (generalizing context mixing)
 
-- Status: IMPLEMENTED + **CI kill-test PASS** (`delta_mix`, 125+ tests green, cross-vendor reviewed).
-  The matched-FLOP 3-way on the real 4 MB enwik8 slice (total ≈1.07e10): **delta 2.4181 bpb beats
-  both counts_only 2.4353 AND counts_more_warm 2.4327** — the binding per-FLOP win (−0.0146 bpb vs
-  spending the same FLOPs on more warm counts). Diagnostics: delta-stream mixer weight **+0.8595**
-  (load-bearing, NOT the A.1 dead-gate); on 20,051 top-order-unseen contexts delta-only **3.73 bpb
-  vs the abstaining count's 8.0**. The first non-Pareto-hollow Space-B learning-rule result. Full
-  5 MB-ADR-carve headline vs the 2.0157 bar: running detached (`delta_o6_warmfull`).
+- Status: DONE — **beats the bar.** `delta_mix` (125+ tests green, cross-vendor reviewed). The full
+  5 MB ADR carve: **`delta_o6_warmfull` = 1.8485 bpb @ 1.322e12 FLOPs**, **strictly dominating** the
+  previous bar `hashed_o6_warmfull` (2.0157 @ 1.478e12) on BOTH axes (−0.167 bpb AND fewer FLOPs).
+  The CI matched-FLOP kill-test also PASSED (delta 2.4181 < counts_only 2.4353 AND counts_more_warm
+  2.4327, total ≈1.07e10); diagnostics: delta-stream mixer weight **+0.8595** (load-bearing, NOT the
+  A.1 dead-gate); on 20,051 top-order-unseen contexts delta-only **3.73 bpb vs the abstaining count's
+  8.0**. The **first** non-Pareto-hollow Space-B learning-rule result, and the first candidate to
+  beat the warmed-mixing bar.
 - The next Space-B **learning-rule** candidate under the Source-(iv) filter (ADR 0003): a
   pure-online, error-correcting fast-weight predictor mixed into the warmed count ensemble. The
   user's steer for this candidate was explicit — *a learning dynamic that beats SGD per-FLOP*, not

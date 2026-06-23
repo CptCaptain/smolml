@@ -1,14 +1,15 @@
 # Experiment B.4 — online delta-rule fast-weight memory (the first non-hollow Space-B win)
 
 > **Researcher note for the docs-builder.** Plain-md source for the MDX page. Reuse
-> `BpbFlopChart`, `Callout`, `ConceptMap`, and the role colors in `global.css`. The
-> full-5 MB-carve headline row (`delta_o6_warmfull`) was still running detached when this note was
-> written — fill it in from `runs/full/leaderboard.md` once it lands (mark it pending until then).
+> `BpbFlopChart`, `Callout`, `ConceptMap`, and the role colors in `global.css`. The full-carve has
+> LANDED — `delta_o6_warmfull` = **1.8485 bpb @ 1.322e12 FLOPs** (`runs/full/leaderboard.md`).
 
 **Status:** mechanism sound, honestly metered, **cross-vendor reviewed**, and — for the first time
-in a Space-B (learning-rule) candidate — **NOT Pareto-hollow**. The matched-FLOP kill-test on real
-enwik8 shows a small but genuine per-FLOP win against the cheap count mixer (the bar that killed
-A.1/B.1/B.2-gated). CI-scale verdict is in; the full-carve headline vs the 2.0157 bar is pending.
+in a Space-B (learning-rule) candidate — **NOT Pareto-hollow**. Both verdicts are in and BOTH are
+wins: the CI matched-FLOP kill-test PASSES, and the **full ADR carve beats the bar outright** —
+`delta_o6_warmfull` reaches **1.8485 bpb @ 1.322e12 total FLOPs**, **strictly dominating** the
+previous bar `hashed_o6_warmfull` (2.0157 @ 1.478e12) on BOTH axes (−0.167 bpb AND fewer FLOPs,
+while warming on fewer bytes). The first candidate to beat the warmed-mixing bar.
 
 ## The bet (Source-(iv))
 
@@ -81,11 +82,13 @@ all fell on.
 
 ## Honest framing (what is and isn't established)
 
-- The CI-scale per-FLOP win is **real but modest** (−0.0146 bpb at matched FLOPs). It is the first
-  Space-B result to clear the cheap-baseline bar at all.
-- It is **CI scale** (4 MB slice, ~1e10 FLOPs). Whether the win survives at the full-corpus 1.48e12
-  bar — where the count tables saturate more and abstain less, possibly shrinking the delta edge — is
-  the `delta_o6_warmfull` full-carve run (detached; headline pending). Honest either way.
+- The CI-scale per-FLOP win was **real but modest** (−0.0146 bpb at matched FLOPs) — enough to clear
+  the cheap-baseline bar that killed every prior Space-B candidate.
+- At **full corpus the edge GREW, not shrank**: `delta_o6_warmfull` reaches **1.8485 bpb @ 1.322e12**
+  vs the bar's 2.0157 @ 1.478e12 — **strictly dominating** (−0.167 bpb AND fewer total FLOPs), and it
+  did so warming on *fewer* bytes (1.2e12 budget vs 1.4e12). The concern that saturating counts would
+  erase the delta edge was wrong — the per-feature generalization compounds as more contexts go novel
+  at high order. The first candidate to beat the warmed-mixing bar; `delta_mix` is the new bar.
 - The downside is bounded: error-correction prevents A.1's marginal-collapse, and the online mixer
   drives a useless stream's weight → 0 with no bpb blow-up.
 
