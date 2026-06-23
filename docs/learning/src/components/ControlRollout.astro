@@ -1,0 +1,20 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+// Marker for the in-context-control rollout instrument. The sample trained
+// held-out rollout lives in public/ (the harness writes it there); we read it
+// at build time and serialize it into an inline JSON script. public/js/
+// compendium.js reads that and mounts the SVG instrument (classic script —
+// works from file://, no fetch). See PROCESS.md for the file:// model.
+//
+// Anchor on the Astro project root (process.cwd() during `astro build`/`dev`,
+// which is docs/learning) — NOT import.meta.url, which at prerender time points
+// at the bundled chunk under dist/, not this source file.
+const rollout = JSON.parse(
+  readFileSync(path.join(process.cwd(), "public", "icl_control_rollout.json"), "utf8"),
+);
+---
+
+<figure class="ctrl" data-widget="controlrollout">
+  <script type="application/json" is:inline set:html={JSON.stringify(rollout)} />
+</figure>

@@ -1,0 +1,173 @@
+---
+title: In-context control & chemotaxis
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import Pipeline from "../../components/Pipeline.astro";
+import ControlRollout from "../../components/ControlRollout.astro";
+
+<Layout
+  title="In-context control & chemotaxis"
+  kicker="CONCEPT 09"
+  blurb="Act in a drifting world and learn to track a moving optimum from local feedback — measuring predict + act, not just predict."
+  related={[
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/fast-weight-memory", title: "Fast-weight associative memory" },
+  ]}
+>
+
+## Intuition — the biology
+
+A bacterium foraging for food cannot see the gradient. It senses only the concentration *where it
+currently is*. So it does something almost embarrassingly simple: it swims a little, checks whether
+things got better, and biases its motion toward "better" — a **run** — reorienting with a **tumble**
+when things got worse. With essentially no memory, run-and-tumble *chemotaxis* climbs to a source
+and keeps tracking it as the source drifts away.
+
+That is the whole idea of this rung, abstracted to a 1-D ring. It is also a different *kind* of task
+from everything else in this compendium: the earlier pages ask a model to **predict** the next byte;
+here the model must **act**. It is the top rung of a graded in-context-learning suite — recall, then
+rule, then composition, then **control** — and the only one that scores *predict + act* together.
+
+<Callout variant="note" title="what makes it “in-context”">
+The model is never trained on the specific drift it will face at eval time. It has to figure out
+how to climb and track *within the episode*, from the feedback on its own tape — no weight update,
+no gradient. The behaviour is learned in-context, the way a few-shot prompt teaches a frozen model
+a new task.
+</Callout>
+
+## The environment — `ChemoEnv`
+
+A ring of $W = 16$ cells carries a smooth concentration bump that peaks at position $\mu$. The
+concentration a cell reads off is a Gaussian in the ring distance to the peak, then quantized to
+$L = 8$ levels — the symbol the agent actually senses:
+
+$$\text{conc}(x) = \exp\!\left(-\,\frac{d_{\text{ring}}(x, \mu)^2}{2\sigma^2}\right), \qquad \text{sensed token} = \big\lfloor (L-1)\cdot \text{conc}(x) + \tfrac12 \big\rfloor$$
+
+Two facts make it hard. First, the peak **drifts** every step (each episode has its own speed and
+direction), so a fixed position rots — the agent must *keep* adapting. Second, the agent at position
+$p$ senses **only** `conc(p)` — one local reading, exactly like the bacterium. Its actions are
+`LEFT`, `STAY`, `RIGHT`, one cell at a time.
+
+The decisive design choice: **obs ≡ reward ≡ the concentration you now smell.** There is no separate
+reward channel to game; doing well *is* standing where it smells strong.
+
+<Pipeline
+  steps={[
+    { label: "sense", sub: "1 local token cₜ", accent: "accent" },
+    { label: "policy", sub: "logits over LEFT / STAY / RIGHT", accent: "transformer" },
+    { label: "act + drift", sub: "move ±1; peak μ drifts" },
+    { label: "next token", sub: "cₜ₊₁ = conc(pos) — obs ≡ reward" },
+  ]}
+  feedback="in-context: no weight update — the agent adapts purely from the action/feedback tape it has read so far"
+/>
+
+<Callout variant="insight" title="held-out by construction">
+Training and evaluation draw drift rates from **disjoint pools**. The eval episodes are unseen
+dynamics, so a model cannot win by memorizing a trajectory — it has to have learned the *strategy*.
+The rung is memorization-proof by design.
+</Callout>
+
+## The interaction — a token tape
+
+Everything happens on one interleaved tape of senses and actions:
+
+`c₀ · a₀ · c₁ · a₁ · c₂ · a₂ · …`
+
+The model reads a concentration token, emits an **action** (its policy is the logits over the action
+sub-vocabulary), the environment applies the move and the drift, and returns the next sensed
+concentration. The same model also **predicts** the next concentration token — that prediction is its
+**world model** of a sensor it only partly controls. Policy and world model are learned jointly, on
+the same tape, through the same FLOP-honest `step` channel the byte models use, so **every rollout
+FLOP is counted** the same way bits-per-byte counts prediction FLOPs.
+
+## The metric — regret, and world-model bits
+
+The headline is **regret against an oracle** that can see $\mu$. Regret is the reward the agent
+leaves on the table — the gap between the oracle's mean per-step reward and the agent's — reported
+**per total training FLOP** at **fixed parameters**. Lower is better; the oracle sits at $\approx 0$.
+
+$$\text{regret} = \bar{r}_{\text{oracle}} - \bar{r}_{\text{agent}}, \qquad \bar{r} = \frac{1}{H}\sum_{t=1}^{H} r_t$$
+
+This is the [loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws) discipline with the *same*
+x-axis as every other page (total FLOPs, log scale) and a control quantity on the y-axis instead of
+bpb. The **secondary** read is the **world-model bits** — how well the model predicts the sensor it
+does not fully control, $-\log_2 p_\theta(c_{t+1}\mid \text{tape}_{\le t})$.
+
+<Callout variant="caveat">
+World-model bits are **policy-conditional**: a different policy visits different cells and therefore
+faces a different prediction problem, so the number is *not* comparable across policies. Read it only
+as a within-policy diagnostic — never as a leaderboard against a model that moved differently.
+</Callout>
+
+## How a transformer learns it — Algorithm Distillation
+
+A transformer cannot do in-context control out of the box; left untrained it just emits noise. So we
+**distill** the behaviour. Roll an adaptive source — plain run-and-tumble — across many *fresh*
+episodes, record the tapes, and train the transformer to predict the next token over the whole tape
+(policy and world model jointly). Then evaluate on **held-out** episodes. In-context climb-and-track
+emerges: the network has absorbed the *algorithm*, not any one trajectory.
+
+<Pipeline
+  steps={[
+    { label: "adaptive source", sub: "run-and-tumble policy", accent: "reference" },
+    { label: "roll fresh episodes", sub: "drifts from the train pool" },
+    { label: "distill", sub: "predict next token over the tape", accent: "transformer" },
+    { label: "held-out eval", sub: "unseen drift pool", accent: "accent" },
+  ]}
+/>
+
+## See it work
+
+Here is one trained model on a single held-out episode. Scrub or press Play and watch the agent
+start far from the peak, climb onto it, and then track it as it drifts around the ring.
+
+<ControlRollout />
+
+## The bar — what it costs, what it buys
+
+The transformer baseline, held at **fixed 148,608 parameters**, on the drifting held-out eval, as we
+pour in more distillation:
+
+| distillation steps | training FLOPs | regret ↓ | reward ↑ |
+| ---: | ---: | ---: | ---: |
+| 150  | 2.97 × 10¹¹ | 0.229 | 0.704 |
+| 600  | 1.19 × 10¹² | 0.171 | 0.762 |
+| 1500 | 2.96 × 10¹² | 0.141 | 0.792 |
+
+For scale: a random policy floors at $\approx 0.37$ mean reward, and the $\mu$-seeing oracle sits at
+$\approx 0$ regret. Within a single episode the trained model's **second-half reward beats its
+first-half** — the signature of *climb, then track* you can watch in the rollout above.
+
+<Callout variant="insight">
+Regret falls and reward rises monotonically with compute — the loss-per-FLOP discipline carried
+intact from byte prediction to **control**. The one curve the whole compendium reads still reads:
+more learning per FLOP, now measured by *predict + act*.
+</Callout>
+
+## Read honestly — what this rung does not yet show
+
+v1 distills a **stationary reactive** source. Run-and-tumble's optimal reaction is the *same* for
+every drift rate — climb the local gradient — so the agent never has to infer how fast the world is
+moving. That keeps the rung clean (leakage- and memorization-proof, and a genuine demonstration of
+climb-and-track on held-out dynamics) but it also means the rung does **not yet isolate** in-context
+*drift-rate inference* from a fixed reaction.
+
+<Callout variant="caveat">
+Frame the result as "**learns to climb and track held-out dynamics from local feedback**," not "infers
+the drift." Distinguishing a clever fixed reaction from genuine in-episode inference needs a source
+that itself *learns within the episode* — the documented next step for this rung, and the bar that
+the [reservoir + plastic-readout](/concepts/fast-weight-memory) style candidates will have to beat.
+</Callout>
+
+## See also
+
+- [Prequential evaluation](/concepts/prequential-evaluation) — predict-before-reveal and total-FLOP accounting, here stretched over a predict-and-act tape.
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — the same x-axis; regret on y instead of bpb.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win a candidate may claim, and the filter every challenger to this bar must pass.
+- [Fast-weight associative memory](/concepts/fast-weight-memory) — cheap in-context memory, the raw material a within-episode control learner would lean on.
+
+</Layout>

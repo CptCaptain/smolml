@@ -23,6 +23,7 @@ const nodes: Node[] = [
   { id: "fwm", x: 462, y: 414, w: 184, label: "Fast-weight memory", role: "fast_weight", href: "/concepts/fast-weight-memory" },
   { id: "pc", x: 780, y: 414, w: 170, label: "Predictive coding", role: "pc", href: "/concepts/predictive-coding" },
   { id: "warm", x: 652, y: 366, w: 150, label: "Online warm-start", role: "warm", href: "/concepts/online-warmup" },
+  { id: "ctrl", x: 170, y: 432, w: 180, label: "In-context control", href: "/concepts/in-context-control" },
   { id: "exp", x: 462, y: 504, w: 156, label: "Experiment log", role: "accent", href: "/experiments" },
 ];
 const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
@@ -49,6 +50,8 @@ const edges: Edge[] = [
   { from: "s4", to: "pc" },
   { from: "pc", to: "exp", dashed: true },
   { from: "cmix", to: "warm" },
+  { from: "preq", to: "ctrl" },
+  { from: "lpf", to: "ctrl" },
 ];
 
 // Experiment leaves: each individual experiment page, hung off the log node on a
@@ -150,9 +153,9 @@ function edgePath(a: Node, b: Node) {
     ))}
   </svg>
   <figcaption class="figcaption">
-    The dependency spine: the goal flows into three pillars, which feed the prequential protocol and
-    the mechanisms (the fast-weight candidate, predictive coding, and the context-mixing reference)
-    &mdash; all indexed by the experiment log, with every individual experiment hung off it below. Every box is
+    The dependency spine: the goal flows into three pillars, which feed the prequential protocol, the
+    mechanisms (the fast-weight candidate, predictive coding, and the context-mixing reference), and
+    the in-context control rung &mdash; all indexed by the experiment log, with every individual experiment hung off it below. Every box is
     a page &mdash; click through.
   </figcaption>
 </figure>

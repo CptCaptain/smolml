@@ -510,6 +510,154 @@
     render();
   }
 
+  // ══ ControlRollout (in-context control / chemotaxis rung) ════════════════
+  // Scrubbable instrument over one trained, held-out ChemoEnv rollout: the
+  // unrolled W-cell ring (current concentration field with the hidden peak ▼
+  // and the agent ▲), a spacetime raster (time ↓) tracing both paths, and a
+  // cumulative-reward spark whose slope steepens as the agent stops climbing
+  // and starts tracking. Built once, then mutated in place per step (the
+  // 33×16 raster never re-renders, so scrubbing stays smooth).
+  function mountControlRollout(root) {
+    var d = readData(root);
+    var field = d.field || [], T = field.length;
+    var W = d.width || (field[0] ? field[0].length : 16), L = d.levels || 8, H = d.horizon || (T - 1);
+    var mu = d.mu || [], pos = d.pos || [], tok = d.conc_token || [], reward = d.reward || [], action = d.action || [];
+    var cum = [0]; for (var ci = 0; ci < reward.length; ci++) cum.push(cum[ci] + reward[ci]);
+    var ACT = ["LEFT", "STAY", "RIGHT"], ACT_ARROW = ["\u2190", "\u00b7", "\u2192"];
+    var AMBER = "232,181,77", GREEN = "#5cc46a", BLUE = "#5ea8e6";
+
+    var VBW = 472, PL = 34, PR = 14, LBL = 16, MK = 14, FIELDH = 48, GAP = 22, AXIS = 30;
+    var IW = VBW - PL - PR, cw = IW / W;
+    var fTop = LBL + MK, fBot = fTop + FIELDH;
+    var rTop = fBot + MK + GAP, rh = 8.2, RH = rh * T, rBot = rTop + RH, VBH = rBot + AXIS;
+    function colX(c) { return PL + c * cw; }
+    function colCX(v) { return PL + (v + 0.5) * cw; }
+    function rowCY(iy) { return rTop + (iy + 0.5) * rh; }
+    function heat(c) { var a = Math.pow(Math.max(0, Math.min(1, c)), 0.6); return "rgba(" + AMBER + "," + a.toFixed(3) + ")"; }
+
+    function rasterCells() {
+      var s = "";
+      for (var iy = 0; iy < T; iy++) {
+        var row = field[iy] || [];
+        for (var c = 0; c < W; c++) s += '<rect x="' + colX(c).toFixed(1) + '" y="' + (rTop + iy * rh).toFixed(1) + '" width="' + (cw + 0.6).toFixed(1) + '" height="' + (rh + 0.6).toFixed(1) + '" fill="' + heat(row[c]) + '"/>';
+      }
+      return s;
+    }
+    // Break the path at ring-seam wraps so we never draw a misleading streak
+    // straight across the raster when the agent crosses cell 15 ↔ 0.
+    function pathSegs(vals, color, dashed) {
+      var segs = [], cur = [];
+      for (var iy = 0; iy < vals.length; iy++) {
+        if (iy > 0 && Math.abs(vals[iy] - vals[iy - 1]) > W / 2) { segs.push(cur); cur = []; }
+        cur.push(colCX(vals[iy]).toFixed(1) + "," + rowCY(iy).toFixed(1));
+      }
+      if (cur.length) segs.push(cur);
+      return segs.map(function (sg) { return '<polyline points="' + sg.join(" ") + '" fill="none" stroke="' + color + '" stroke-width="1.7"' + (dashed ? ' stroke-dasharray="3 3"' : "") + ' stroke-linejoin="round" stroke-linecap="round"/>'; }).join("");
+    }
+    function fieldGroup(t) {
+      var row = field[t] || [], s = "";
+      for (var c = 0; c < W; c++) {
+        var v = Math.max(0, Math.min(1, row[c] || 0)), hh = v * FIELDH;
+        var isAgent = pos[t] === c;
+        s += '<rect x="' + (colX(c) + 1).toFixed(1) + '" y="' + (fBot - hh).toFixed(1) + '" width="' + (cw - 2).toFixed(1) + '" height="' + Math.max(0.6, hh).toFixed(1) + '" rx="1.5" fill="rgba(' + AMBER + "," + Math.pow(v, 0.55).toFixed(3) + ')"' + (isAgent ? ' stroke="' + GREEN + '" stroke-width="1.6"' : "") + "/>";
+      }
+      var pk = colCX(mu[t]);
+      s += '<path d="M' + (pk - 5).toFixed(1) + " " + (LBL + 2) + " L" + (pk + 5).toFixed(1) + " " + (LBL + 2) + " L" + pk.toFixed(1) + " " + (fTop - 1) + ' Z" fill="' + BLUE + '"/>';
+      var ag = colCX(pos[t]);
+      s += '<path d="M' + (ag - 5).toFixed(1) + " " + (fBot + MK - 1) + " L" + (ag + 5).toFixed(1) + " " + (fBot + MK - 1) + " L" + ag.toFixed(1) + " " + (fBot + 1) + ' Z" fill="' + GREEN + '"/>';
+      return s;
+    }
+
+    var SVW = 240, SVH = 96, SPL = 4, SPR = 4, SPT = 8, SPB = 16;
+    var sIW = SVW - SPL - SPR, sIH = SVH - SPT - SPB, cumMax = (T - 1) || 1;
+    function sx(i) { return SPL + (T <= 1 ? 0 : i / (T - 1) * sIW); }
+    function sy(v) { return SPT + sIH - (v / cumMax) * sIH; }
+    function refLine(slope) { return sx(0).toFixed(1) + "," + sy(0).toFixed(1) + " " + sx(T - 1).toFixed(1) + "," + sy(slope * (T - 1)).toFixed(1); }
+    function cumPts(upto) { var p = []; for (var iy = 0; iy <= upto; iy++) p.push(sx(iy).toFixed(1) + "," + sy(cum[iy]).toFixed(1)); return p.join(" "); }
+
+    function stat(v, l, hi) { return '<div class="ctrl-stat' + (hi ? " hi" : "") + '"><span class="ctrl-stat-v">' + v + '</span><span class="ctrl-stat-l">' + l + "</span></div>"; }
+    function scoreboard() {
+      return '<div class="ctrl-score">' +
+        stat(d.regret != null ? d.regret.toFixed(3) : "\u2014", "regret \u2193", true) +
+        stat(d.mean_reward != null ? d.mean_reward.toFixed(3) : "\u2014", "mean reward \u2191") +
+        stat("0.37", "random floor") +
+        stat("0", "oracle regret") + "</div>";
+    }
+    function staticSvg() {
+      var s = '<svg viewBox="0 0 ' + VBW + " " + VBH + '" class="ctrl-svg" role="img" aria-label="Chemotaxis rollout: the agent climbs onto the drifting concentration peak and tracks it over ' + H + ' steps.">';
+      s += '<rect x="' + PL + '" y="' + rTop.toFixed(1) + '" width="' + IW + '" height="' + RH.toFixed(1) + '" fill="#16130e"/>';
+      s += rasterCells();
+      s += pathSegs(mu, BLUE, true);
+      s += pathSegs(pos, GREEN, false);
+      s += '<rect class="ctrl-hl" x="' + PL + '" width="' + IW + '" height="' + rh.toFixed(1) + '" y="' + rTop.toFixed(1) + '"/>';
+      s += '<text x="' + PL + '" y="' + (LBL - 5) + '" class="ctrl-cap">the world now \u2014 the agent senses only its own cell</text>';
+      s += '<g class="ctrl-field"></g>';
+      [0, 4, 8, 12, 15].forEach(function (c) { s += '<text x="' + colCX(c).toFixed(1) + '" y="' + (rBot + 13) + '" class="ctrl-tick" text-anchor="middle">' + c + "</text>"; });
+      s += '<text x="' + (PL + IW / 2).toFixed(1) + '" y="' + (rBot + AXIS - 2) + '" class="ctrl-tick" text-anchor="middle">ring cell 0\u201315 (wraps) \u2014 spacetime raster, time \u2193</text>';
+      s += "</svg>";
+      return s;
+    }
+    function readout() {
+      return '<div class="ctrl-read"><div class="ctrl-step"><span class="ctrl-step-v">0</span><span class="ctrl-step-l">/ ' + H + ' steps</span></div>' +
+        '<dl class="ctrl-kv"><dt>sensed</dt><dd class="ctrl-sense">\u2014</dd><dt>next move</dt><dd class="ctrl-action">\u2014</dd><dt>reward so far</dt><dd class="ctrl-cum">0.00</dd></dl>' +
+        '<p class="ctrl-cum-h">cumulative reward</p>' +
+        '<svg viewBox="0 0 ' + SVW + " " + SVH + '" class="ctrl-spark" role="img" aria-label="cumulative reward versus step">' +
+        '<polyline points="' + refLine(1) + '" class="ctrl-ceil"/>' +
+        '<polyline points="' + refLine(0.37) + '" class="ctrl-floor"/>' +
+        '<polyline points="' + cumPts(T - 1) + '" class="ctrl-cum-full"/>' +
+        '<polyline class="ctrl-cum-live" points=""/>' +
+        '<circle class="ctrl-cum-dot" r="3" cx="' + sx(0).toFixed(1) + '" cy="' + sy(0).toFixed(1) + '"/></svg>' +
+        '<p class="ctrl-spark-cap">faint lines: perfect 1.0/step (top) and random 0.37/step. The agent line steepens as it stops climbing and starts tracking.</p></div>';
+    }
+    function controls() {
+      return '<div class="ctrl-controls"><button type="button" data-act="step">Step</button>' +
+        '<button type="button" class="primary" data-act="play">Play</button>' +
+        '<button type="button" data-act="reset">Reset</button>' +
+        '<input type="range" class="ctrl-scrub" min="0" max="' + (T - 1) + '" value="0" step="1" aria-label="scrub to step"/></div>';
+    }
+    function caption() {
+      return '<figcaption class="figcaption">One trained model, one held-out episode (drift drawn from the eval-only pool). <strong>Top:</strong> the concentration field right now \u2014 the hidden peak (\u25bc, blue) the agent cannot see, and the agent (\u25b2, green) that senses only its own cell. <strong>Below:</strong> the spacetime raster (time \u2193); the green path is the agent, the blue dashed path is the peak it chases. Press Play or scrub: the agent climbs onto the drifting peak, then tracks it \u2014 the cumulative-reward line steepens once tracking begins. Scoreboard numbers are for this single rollout; the bar table reports the held-out mean.</figcaption>';
+    }
+
+    root.innerHTML = scoreboard() + '<div class="ctrl-stage">' + staticSvg() + readout() + "</div>" + controls() + caption();
+    var elField = root.querySelector(".ctrl-field"), elHl = root.querySelector(".ctrl-hl");
+    var elStep = root.querySelector(".ctrl-step-v"), elSense = root.querySelector(".ctrl-sense"), elAction = root.querySelector(".ctrl-action"), elCum = root.querySelector(".ctrl-cum");
+    var elLive = root.querySelector(".ctrl-cum-live"), elDot = root.querySelector(".ctrl-cum-dot");
+    var elScrub = root.querySelector(".ctrl-scrub"), elPlay = root.querySelector('[data-act="play"]'), elStepBtn = root.querySelector('[data-act="step"]');
+    var t = 0, playing = false, timer = null;
+    function atEnd() { return t >= T - 1; }
+    function update(fromScrub) {
+      elField.innerHTML = fieldGroup(t);
+      elHl.setAttribute("y", (rTop + t * rh).toFixed(1));
+      elStep.textContent = t;
+      var lvl = tok[t], conc = field[t] && field[t][pos[t]];
+      elSense.innerHTML = (lvl != null ? "level " + lvl + " / " + (L - 1) : "\u2014") + ' <span class="ctrl-dim">(' + (conc != null ? conc.toFixed(2) : "?") + ")</span>";
+      if (t < action.length) elAction.innerHTML = '<span class="ctrl-arrow">' + ACT_ARROW[action[t]] + "</span> " + ACT[action[t]];
+      else elAction.textContent = "episode end";
+      elCum.textContent = cum[t].toFixed(2);
+      elLive.setAttribute("points", cumPts(t));
+      elDot.setAttribute("cx", sx(t).toFixed(1)); elDot.setAttribute("cy", sy(cum[t]).toFixed(1));
+      if (!fromScrub) elScrub.value = t;
+      elPlay.textContent = playing ? "Pause" : "Play";
+      elStepBtn.disabled = atEnd();
+    }
+    function step() { if (!atEnd()) { t += 1; update(); } }
+    function loop() {
+      clearTimeout(timer);
+      if (playing && !atEnd()) timer = setTimeout(function () { if (playing) { step(); loop(); } }, 420);
+      else if (atEnd()) { playing = false; update(); }
+    }
+    root.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-act]"); if (!b) return;
+      var a = b.getAttribute("data-act");
+      if (a === "step") { playing = false; clearTimeout(timer); step(); update(); }
+      else if (a === "play") { if (atEnd()) t = 0; playing = !playing; update(); loop(); }
+      else if (a === "reset") { playing = false; clearTimeout(timer); t = 0; update(); }
+    });
+    root.addEventListener("input", function (e) { if (e.target.classList.contains("ctrl-scrub")) { playing = false; clearTimeout(timer); t = parseInt(e.target.value, 10) || 0; update(true); } });
+    update();
+  }
+
   // ── dispatch ──────────────────────────────────────────────────────────────
   var MOUNTERS = {
     chart: mountChart,
@@ -518,7 +666,8 @@
     fastweight: mountFastWeight,
     codelength: mountCodeLength,
     scaling: mountScaling,
-    sourceiv: mountSourceIv
+    sourceiv: mountSourceIv,
+    controlrollout: mountControlRollout
   };
   function init() {
     var nodes = document.querySelectorAll("[data-widget]");
