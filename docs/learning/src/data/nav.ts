@@ -68,6 +68,13 @@ export const concepts: NavItem[] = [
     blurb: "Stream the free prior corpus through the learner first — nearly free, and it flips the win.",
     kicker: "CONCEPT 08",
   },
+  {
+    slug: "in-context-control",
+    href: "/concepts/in-context-control",
+    title: "In-context control & chemotaxis",
+    blurb: "Act in a drifting world and track a moving optimum from local feedback — predict + act, per FLOP.",
+    kicker: "CONCEPT 09",
+  },
 ];
 
 export const experiments: NavItem[] = [

@@ -52,6 +52,7 @@ Only the chart takes data; the rest are self-contained.
 | `scaling` (`ScalingCalculator.astro`) | C = 6·N·D arithmetic with N/D log-sliders, hardware, wall-clock, GPT-3 preset. | _(none)_ |
 | `fastweight` (`FastWeightDemo.astro`) | Associative memory: outer-product write, matvec read, decay/forgetting, live d×V heatmap, crosstalk on similar keys. | _(none)_ |
 | `sourceiv` (`SourceIvScreen.astro`) | Toggle the (i)–(iv) sources a candidate claims → FLOP-impact bars + scout/park verdict. | _(none)_ |
+| `controlrollout` (`ControlRollout.astro`) | **In-context control / chemotaxis rung.** Scrubbable instrument over one trained held-out `ChemoEnv` rollout: regret/reward scoreboard, an unrolled W-cell field bar (concentration heat + hidden-peak ▼ / agent ▲ markers), a spacetime raster (time ↓) tracing the agent path (green) chasing the peak path (blue dashed, wrap-broken at the ring seam), and a cumulative-reward spark vs perfect/random reference lines. Step/Play/Reset/scrub; built once then mutated in place (the 33×16 raster never re-renders). | inline JSON: the full `icl_control_rollout.json` (read from `public/` at build time by the marker) |
 
 The shared **stream scaffold** and **chart** logic live as functions in `compendium.js` (rule of
 two: one chart routine for 8 chart instances; one stream scaffold for both stream demos).
@@ -72,6 +73,11 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
   `contextMixingReference`, `prequentialBaseline`, `amortizedBaseline`, `freeUnigram`,
   `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2), `hashedMixFull` (B.3), constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
+- `public/icl_control_rollout.json` — a sample **trained, held-out** `ChemoEnv` rollout the harness
+  writes (fields: `width, levels, horizon, mu[], pos[], conc_token[], reward[], action[], field[][],
+  mean_reward, regret`). `ControlRollout.astro` reads it at build time (anchored on `process.cwd()`,
+  not `import.meta.url` — the latter points at the bundled chunk under `dist/` at prerender) and
+  serializes it into the inline JSON `<script>` the `controlrollout` widget reads.
 
 ## Style & convention decisions
 
@@ -90,7 +96,7 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses), `Pipeline` (6), `CardGrid` (2),
+- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses), `Pipeline` (8), `CardGrid` (2),
   `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 12 chart instances and
   one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
@@ -119,9 +125,9 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 
 ## Pages (status: all built, build green)
 
-- **Concepts (8):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
+- **Concepts (9):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
   prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
-  predictive-coding, online-warmup.
+  predictive-coding, online-warmup, in-context-control.
 - **Experiments (9 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
   context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
   B.2-warmed-mixing, B.3-hashed-mix-full-corpus, B.4-delta-mix, first-finding-pareto. Each renders the shared interactive `BpbFlopChart`
@@ -270,6 +276,33 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
   &lt;1 FLOP decade ($4.74\times10^{10}$–$1.78\times10^{11}$), wider than B.2 Phase 2, so the log-x
   separation reads cleanly; peak RAM (a new dimension) stays in the table, not on the axes (flagged in
   the caption). Researcher note found internally consistent — no science flagged.
+- **2026-06-19 (session 11 — C.A.0 in-context-control concept page):** authored the concept
+  `in-context-control` from the researcher note — the chemotaxis "control" rung of the graded ICL
+  suite. Intuition (bacterial run-and-tumble) → `ChemoEnv` math (Gaussian bump on a `W=16` ring,
+  `L=8` levels, drifting peak, local-only sensing, obs ≡ reward, held-out disjoint drift pools) →
+  the action/feedback token tape → the metric (regret-vs-oracle headline per total FLOP at fixed
+  params + a `caveat` that world-model bits are policy-conditional) → Algorithm Distillation →
+  the interactive rollout → the bar table (148,608-param baseline; regret falls / reward rises with
+  distillation steps; `insight` Callout) → an honest-limitation `caveat` (v1 distills a *stationary
+  reactive* source, so the rung demonstrates climb-and-track on held-out dynamics but does **not yet
+  isolate** in-context drift-rate inference — do not overclaim). Two `Pipeline`s (env loop +
+  distillation), reused `Callout`. **New single-use widget `ControlRollout`** (`controlrollout`) +
+  `mountControlRollout` in `compendium.js` + a `.ctrl-*` block in `global.css`; it reuses the
+  existing role colors (transformer green = agent, reference blue = hidden peak, amber heat =
+  concentration) — **no new data role or token** (the rung adds no `BpbFlopChart` curve; the bar is
+  a markdown table, not a chart, so regret never mislabels the bpb axis). Rule of two **not**
+  triggered for the rollout (one use); `Pipeline` 6→8. Wired into `nav.ts` (CONCEPT 09), the
+  `ConceptMap` (new `In-context control` node off `preq` + `lpf`, left-bottom open space, no
+  overlaps; caption updated), the landing card grid (auto via nav), and reciprocal See-also links on
+  prequential / loss-per-flop / source-iv. Build green (19 pages); verified from `file://`: widget
+  mounts (546 raster rects, wrap-broken agent path, scoreboard 0.220/0.622), Step/scrub update step
+  + cumulative reward + highlight band, **zero console errors**, KaTeX renders (8 spans), no `\u`
+  leaks, map node + all cross-links resolve. **Viz note:** the scoreboard shows this single
+  rollout's regret (0.220), louder than the held-out-mean 0.141 in the bar table — flagged in both
+  the baked figcaption and the page so the two never read as contradictory. The rollout JSON's
+  `reward[t]` is the concentration at the agent's *new* cell after transition t (`field[t+1][pos[t+1]]`),
+  so cumulative reward at frame t is `Σ reward[0..t-1]`. Researcher note found internally
+  consistent — no science flagged.
 
 - **2026-06-22 (session 11 — B.4 delta_mix page):** authored the experiment page `B.4-delta-mix` from
   the researcher note, mirroring B.3/B.2 layout/frontmatter/imports. Tells the first **non-Pareto-hollow

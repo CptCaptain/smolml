@@ -1,10 +1,11 @@
-# The measurement harness (Tasks 0.1 + 0.2)
+# The measurement harness (Tasks 0.1 + 0.2 + C.A.0)
 
 The foundation every candidate plugs into. This document is the **contract**: a
-new mechanism is added by reading *this*, not the harness source. Two evaluation
+new mechanism is added by reading *this*, not the harness source. Three evaluation
 modes share one model interface and one FLOP counter: the **amortized** train/val
-harness (§1–§4) and the **prequential / online** mode with total-FLOP accounting
-(§5, Task 0.2 — built on the same interfaces).
+harness (§1–§4), the **prequential / online** mode with total-FLOP accounting
+(§5, Task 0.2), and the **control rung** — in-context RL on a feedback task
+(§6, Task C.A.0) — all built on the same interfaces.
 
 The one metric is **bits-per-byte at a fixed FLOP budget** on a tiny byte-level
 corpus — training FLOPs (amortized) or total FLOPs incl. inference + adaptation
@@ -337,6 +338,194 @@ clone, fully offline.
 - **Prior→eval state hand-off is deferred.** 0.2 supports gradient pretraining on
   the prior only; carrying online/adaptation *state* from the prior corpus into
   the eval stream is deferred until a stateful candidate needs it.
+
+## 6. Control rung (in-context RL) — chemotaxis (Task C.A.0)
+
+A third measurement mode, for **feedback-driven** mechanisms: instead of
+predicting the next byte of a fixed corpus, the model *acts* in an environment
+and is scored on how well it controls it **in-context**. Same model seam (§1),
+same FLOP counter (§2), same `model.step` channel as prequential (§5) — only the
+data generator and the scorer are new.
+
+```mermaid
+graph LR
+    SRC[run-and-tumble source<br/>improves within episode] --> TAPE[distillation tapes<br/>c0 a0 c1 a1 … cH]
+    TAPE --> TRAIN[distill_train_run<br/>next-token, FLOP budget]
+    ENV[ChemoEnv<br/>drifting peak] --> ROLL[evaluate_control<br/>rollout via model.step]
+    TRAIN --> ROLL
+    ROLL --> M[regret vs oracle<br/>+ world-model bits]
+    M --> LB[regenerate_control<br/>table + plot]
+```
+
+### The environment + the `Environment` seam
+
+`smolml/envs/chemotaxis.py`. `ChemoEnv` is a 1-D ring of `width=16` cells with a
+Gaussian concentration peak at `mu` (`sigma=2.0`) that **drifts** one cell at a
+fixed per-episode rate and direction. The agent sits at cell `p`, senses **only**
+the local concentration quantized to `levels=8` symbols, and acts LEFT/STAY/RIGHT
+(`ACTION_DELTAS=(-1,0,1)`). Reward is the raw concentration in `[0,1]` at the new
+cell (a Gaussian of ring-distance to the peak); `oracle_action()` greedily steps
+toward the peak. **Drift-rate pools are split disjointly** — even-index rates for
+`train`, odd for `eval` (`drift_rates(split)`) — so eval episodes run at drift
+speeds never seen in training: the metric is **held-out** in-context control.
+
+Episodes are **token tapes** `c0 a0 c1 a1 … a_{H-1} c_H` (length `2H+1`,
+`horizon=64`). The vocab packs concentrations and actions into one disjoint id
+space — `conc_slice(cfg) = [0, levels)`, `action_slice(cfg) = [levels,
+levels+3)`, `vocab_size = levels + N_ACTIONS` — so even tape positions are always
+concentrations and odd positions actions, and the **same logits** carry both a
+world-model head (the concentration slice) and a policy head (the action slice).
+`make_distillation_batch` returns next-token `(x, y) = (tape[:-1], tape[1:])`.
+
+Everything downstream depends only on a thin **`Environment` protocol**:
+
+```python
+class Environment(Protocol):
+    def reset(self) -> int: ...                            # initial concentration token
+    def step(self, action_idx: int) -> tuple[int, float]:  # (level_token, raw_reward)
+    def oracle_action(self) -> int: ...                    # greedy peak-seeking move
+```
+
+`evaluate_control`, `distill_train_run`, and every candidate touch the env *only*
+through this seam, so a different feedback task (a new ring rule, a 2-D grid, a
+bandit) drops in by implementing `reset`/`step`/`oracle_action` and reusing the
+whole rung — scorer, trainer, leaderboard, and renderer unchanged.
+
+### Training — Algorithm Distillation
+
+The transformer is **not** taught a fixed policy; it is taught the *improvement
+operator*. The source is **run-and-tumble** (`RunAndTumble`, `epsilon=0.1`): keep
+moving while concentration rises, reverse on a drop — a policy that demonstrably
+improves **within** an episode (a learner worth distilling, asserted in the
+tests). `distill_train_run` (`smolml/control_train.py`) rolls the source over
+fresh training episodes into static tapes and trains by **next-token prediction**
+to a FLOP budget, mirroring `train.py`'s budgeted loop and JSONL logging. Trained
+on sequences of (improving) trial-and-error, the model learns to *adapt
+in-context* at rollout time. The run log is a `protocol="control"` JSONL (§3
+schema, control fields): step lines carry `cumulative_flops`, `mean_reward`,
+`regret`, `world_model_bits`.
+
+### Evaluation — interactive rollout (FLOP-honest)
+
+`evaluate_control(model, cfg, *, split="eval", n_episodes, seed, device,
+greedy=False, record=False)` (`smolml/control_eval.py`) plays the model **live**
+in `ChemoEnv` over a seeded held-out set, reusing the exact `model.step` channel
+prequential uses (§5). Per env step it: feeds the current concentration through
+`step`, **samples an action** from the policy slice of the returned logits,
+applies it to the env, then feeds the resulting action token through `step` and
+**scores world-model bits** on the concentration slice of the *next* prediction
+against the true next concentration. Because `step` returns the FLOPs it spent
+(observe + any in-context adaptation + predict), the **entire eval rollout is
+FLOP-counted into the reported total** (ADR 0004) — a candidate that adapts at
+rollout time pays for it; there is no off-channel compute.
+
+### The metric — regret vs oracle (+ world-model bits) vs total FLOPs at fixed params
+
+- **Headline — regret vs oracle.** `regret = (oracle_reward − agent_reward)` per
+  step, on the *same seeded episodes* the agent saw; lower is better, `0` is
+  oracle-optimal. This is what ranks the board.
+- **Secondary — world-model bits.** Mean `−log₂ p(true next concentration)`: how
+  well the model predicts the sensor it does **not** control — the learned world
+  model, scored on the concentration slice. **Policy-conditional:** bits accrue
+  over the states the agent visits, so they are *not* comparable across policies
+  or checkpoints — a better tracker dwells near the saturated peak, where drift
+  ticks punish confident predictions and can *raise* bits (observed: the baseline
+  bar's bits rise 1.38→2.11 as regret falls 0.23→0.14). Read it as a within-policy
+  diagnostic, not a cross-run ranking.
+- **vs total FLOPs at fixed params.** Parameter count is held **fixed**; you move
+  along the FLOP axis by spending more *distillation* (the baseline sweeps the
+  training budget). Each run's reported `total_flops` also folds in its eval
+  rollout (honesty), so the curve reads "regret ↓ as FLOPs ↑, params constant" —
+  the loss-per-FLOP discipline (ADR 0001) carried over to control.
+- **In-context improvement** is visible in `first_half_reward` vs
+  `second_half_reward`: a genuine in-context learner does better in the back half
+  of an episode, once it has gathered feedback.
+- **Limitation (v1) — adaptation is not fully isolated.** The distillation source
+  (run-and-tumble) is a *stationary reactive* policy: the optimal climb reaction is
+  the same for every drift rate, so a rate-agnostic reactor clears the held-out
+  rates without inferring the drift in-context. The rung is leakage- and
+  memorization-proof (disjoint drift pools, fresh per-episode dynamics, local-only
+  sensing), and `second_half_reward > first_half_reward` confirms the agent climbs
+  onto the peak — but it does not yet *isolate* in-context drift-rate inference from
+  a memorized fixed reaction. Sourcing tapes from a within-episode *learner* (or
+  making drift inference load-bearing) is the documented enhancement for a follow-up.
+
+### Running the baseline
+
+```bash
+uv run python -m smolml.experiments.control_baseline
+```
+
+Distill-trains a transformer across a small FLOP sweep, evals each model on
+held-out episodes, then writes `runs/control/leaderboard.md` + `.png` and a
+sample rollout raster `runs/control/sample_rollout.png`. CPU + synthetic env, it
+runs in minutes — it is the **bar** a minimal-organism candidate must beat.
+
+### Adding a Space-C control candidate (zero rung changes)
+
+A control candidate is just a registered `LanguageModel` (§1) that also
+implements the per-step seam (§5) — `init_prequential_state` + `step` returning
+its **honest** `FlopBreakdown`. That is the entire contract:
+
+```python
+@register_model("my_controller")
+class MyController(LanguageModel):
+    def forward(self, idx): ...              # (B,T) -> (B,T,vocab) logits
+    def flops(self, seq_len): ...            # analytic, via smolml.flops
+    def init_prequential_state(self): ...    # fresh per-rollout state
+    def step(self, state, token, pos):       # fold token, adapt, predict NEXT
+        ...                                  # -> (state, logits, FlopBreakdown)
+    @classmethod
+    def from_config(cls, config): ...
+```
+
+`evaluate_control` and `distill_train_run` reach the model **only** through
+`build_model(name, …)` and the seam, so they are **unchanged** for a new entrant.
+The rung's only env-specific wiring is that `distill_train_run` sets the model
+config's `vocab_size` and `max_seq_len = 2·horizon + 1`; the candidate just
+honors them. A fast-weight / associative-memory mechanism's in-context adaptation
+lives inside `step`, so it is FLOP-counted in the rollout, and its in-context
+learning shows up as **rising `second_half_reward`** and **falling regret** — the
+quantities the rung ranks on. (World-model bits is a within-policy diagnostic, not
+a cross-run "lower = better" signal; see the metric section.)
+
+### Regenerating the board
+
+```python
+from smolml.leaderboard import regenerate_control
+
+table, png = regenerate_control(
+    "runs/control",
+    table_path="runs/control/leaderboard.md",
+    plot_path="runs/control/leaderboard.png",
+)
+```
+
+`regenerate_control` reads every `runs/control/*.jsonl`, ranks by **final regret**
+(lowest first), writes a markdown table (rank / run / model / params / final
+FLOPs / regret / reward / wm bits), and plots regret vs cumulative training FLOPs
+(log-x). Like the main board (§4) it is reproducible and never hand-edited —
+regenerate after new runs land.
+
+### Rendering a rollout
+
+Pass `record=True` to `evaluate_control`; the first episode is captured into
+`ControlResult.trajectory` (a `Trajectory`: per-step field, agent path, peak path,
+actions, rewards, predicted concentrations). Then:
+
+```python
+from smolml.envs.render import render_rollout, animate_rollout
+
+res = evaluate_control(model, cfg, split="eval", n_episodes=1, seed=0,
+                       device=torch.device("cpu"), record=True)
+render_rollout(res.trajectory, "runs/control/rollout.png")           # spacetime raster
+animate_rollout(res.trajectory, "runs/control/rollout.gif", fps=10)  # opt-in GIF
+```
+
+`render_rollout` is the default static artifact: a spacetime raster of the
+concentration field over time with the agent and peak paths overlaid, plus a
+cumulative-reward trace. `animate_rollout` is an opt-in animated GIF (headless
+matplotlib + the pillow writer, guarded — it raises if pillow is unavailable).
 
 ## Caveats (known gaps; do not over-read small deltas)
 

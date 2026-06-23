@@ -582,6 +582,46 @@ blockquote {
 .cm-pending { font-family: var(--font-mono); font-size: 0.78rem; color: var(--paper-dim); margin: 0.4rem 0 0; }
 .cm-pending strong { color: #e8b54d; }
 
+/* control rollout (in-context control / chemotaxis) */
+.ctrl { margin: 1.8em 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--ink-1); padding: 1.1rem 1.2rem; }
+.ctrl-score { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6rem; margin-bottom: 1.1rem; }
+.ctrl-stat { display: flex; flex-direction: column; gap: 0.18rem; padding: 0.5rem 0.7rem; background: var(--ink-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.ctrl-stat-v { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; color: var(--paper); line-height: 1; }
+.ctrl-stat-l { font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.ctrl-stat.hi .ctrl-stat-v { color: var(--accent); }
+.ctrl-stage { display: grid; grid-template-columns: 1fr 15rem; gap: 1.2rem; align-items: start; }
+.ctrl-svg { width: 100%; height: auto; display: block; font-family: var(--font-mono); }
+.ctrl-hl { fill: rgba(232, 181, 77, 0.13); stroke: var(--accent); stroke-width: 1; }
+.ctrl-cap { fill: var(--muted); font-size: 10.5px; letter-spacing: 0.02em; }
+.ctrl-tick { fill: var(--muted); font-size: 10px; }
+.ctrl-ceil { fill: none; stroke: #6f6650; stroke-width: 1; stroke-dasharray: 3 3; }
+.ctrl-floor { fill: none; stroke: #6f6650; stroke-width: 1; stroke-dasharray: 1 4; }
+.ctrl-cum-full { fill: none; stroke: #3f5e3f; stroke-width: 1.4; }
+.ctrl-cum-live { fill: none; stroke: var(--c-transformer); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.ctrl-cum-dot { fill: var(--c-transformer); stroke: #16130e; stroke-width: 1.4; }
+.ctrl-read { border-left: 1px solid var(--line); padding-left: 1rem; }
+.ctrl-step { display: flex; align-items: baseline; gap: 0.35rem; }
+.ctrl-step-v { font-family: var(--font-mono); font-size: 2rem; font-weight: 700; color: var(--accent); line-height: 1; }
+.ctrl-step-l { font-family: var(--font-mono); font-size: 0.7rem; color: var(--muted); }
+.ctrl-kv { display: grid; grid-template-columns: auto 1fr; gap: 0.3rem 0.6rem; margin: 0.85rem 0; font-family: var(--font-mono); font-size: 0.8rem; }
+.ctrl-kv dt { color: var(--muted); }
+.ctrl-kv dd { margin: 0; color: var(--paper); text-align: right; }
+.ctrl-dim { color: var(--muted); }
+.ctrl-arrow { color: var(--c-transformer); font-weight: 700; }
+.ctrl-cum-h { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0.4rem 0 0.3rem; }
+.ctrl-spark { width: 100%; height: auto; display: block; }
+.ctrl-spark-cap { font-family: var(--font-mono); font-size: 0.64rem; color: var(--muted); margin: 0.25rem 0 0; line-height: 1.35; }
+.ctrl-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1.1rem; }
+.ctrl-controls button { font-family: var(--font-mono); font-size: 0.8rem; cursor: pointer; background: var(--ink-2); color: var(--paper); border: 1px solid var(--line); border-radius: 5px; padding: 0.4rem 0.9rem; }
+.ctrl-controls button.primary { background: var(--accent-glow); color: var(--accent); border-color: var(--accent-deep); }
+.ctrl-controls button:hover:not(:disabled) { border-color: var(--accent); }
+.ctrl-controls button:disabled { opacity: 0.4; cursor: default; }
+.ctrl-scrub { flex: 1; min-width: 8rem; accent-color: var(--accent); }
+@media (max-width: 620px) {
+  .ctrl-stage { grid-template-columns: 1fr; }
+  .ctrl-read { border-left: none; border-top: 1px solid var(--line); padding-left: 0; padding-top: 1rem; }
+  .ctrl-score { grid-template-columns: repeat(2, 1fr); }
+}
 /* generalization two-bar (B.4 delta_mix: delta-only vs the abstaining count on unseen contexts) */
 .genbars { margin: 1.5em 0 0.5em; display: flex; flex-direction: column; gap: 0.55rem; }
 .genbar-row { display: grid; grid-template-columns: 13rem 1fr; align-items: center; gap: 0.8rem; }

@@ -249,3 +249,107 @@ def regenerate(
     if table_path is not None:
         Path(table_path).write_text(table + "\n")
     return table, png
+
+
+@dataclass
+class ControlRunRecord:
+    run: str
+    model: str
+    params: int
+    device: str
+    seed: int
+    budget: float
+    flops: list[int] = field(default_factory=list)
+    regret: list[float] = field(default_factory=list)
+    reward: list[float] = field(default_factory=list)
+    wm_bits: list[float] = field(default_factory=list)
+
+    @property
+    def final_regret(self) -> float:
+        return self.regret[-1] if self.regret else float("nan")
+
+
+def load_control_run(path: str | Path) -> ControlRunRecord:
+    meta: dict[str, object] = {}
+    flops: list[int] = []
+    regret: list[float] = []
+    reward: list[float] = []
+    wm: list[float] = []
+    with Path(path).open() as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            obj = json.loads(line)
+            if obj.get("type") == "meta":
+                meta = obj
+            elif obj.get("type") == "step":
+                flops.append(int(obj["cumulative_flops"]))
+                regret.append(float(obj["regret"]))
+                reward.append(float(obj["mean_reward"]))
+                wm.append(float(obj["world_model_bits"]))
+    if not meta:
+        raise ValueError(f"{path}: missing meta line")
+    return ControlRunRecord(
+        run=meta["run"],
+        model=meta["model"],
+        params=int(meta["params"]),
+        device=meta["device"],
+        seed=int(meta["seed"]),
+        budget=float(meta["flop_budget"]),
+        flops=flops,
+        regret=regret,
+        reward=reward,
+        wm_bits=wm,
+    )
+
+
+def collect_control_runs(runs_dir: str | Path) -> list[ControlRunRecord]:
+    records = [load_control_run(p) for p in sorted(Path(runs_dir).glob("*.jsonl"))]
+    records.sort(key=lambda r: r.final_regret)
+    return records
+
+
+def build_control_table(records: list[ControlRunRecord]) -> str:
+    rows = [
+        "| rank | run | protocol | model | params | final FLOPs | regret | reward | wm bits |",
+        "| ---: | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for rank, r in enumerate(records, start=1):
+        rows.append(
+            f"| {rank} | {r.run} | control | {r.model} | {r.params:,} | "
+            f"{(r.flops[-1] if r.flops else 0):.3e} | {r.final_regret:.4f} | "
+            f"{(r.reward[-1] if r.reward else float('nan')):.4f} | "
+            f"{(r.wm_bits[-1] if r.wm_bits else float('nan')):.4f} |"
+        )
+    return "\n".join(rows)
+
+
+def plot_control(records: list[ControlRunRecord], out_png: str | Path) -> Path:
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for r in records:
+        if r.flops:
+            ax.plot(r.flops, r.regret, marker="o", label=r.run)
+    ax.set_xscale("log")
+    ax.set_xlabel("training FLOPs")
+    ax.set_ylabel("regret vs oracle (per step)")
+    ax.set_title("Control rung: regret vs FLOPs")
+    ax.legend(fontsize=8)
+    out = Path(out_png)
+    fig.tight_layout()
+    fig.savefig(out, dpi=80)
+    plt.close(fig)
+    return out
+
+
+def regenerate_control(
+    runs_dir: str | Path,
+    *,
+    table_path: str | Path,
+    plot_path: str | Path,
+) -> tuple[str, Path]:
+    records = collect_control_runs(runs_dir)
+    table = build_control_table(records)
+    Path(table_path).write_text(table + "\n")
+    png = plot_control(records, plot_path)
+    return table, png
