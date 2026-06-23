@@ -27,3 +27,9 @@ def test_distill_train_smoke_writes_log(tmp_path):
     log = (tmp_path / "runs" / f"{summary.run}.jsonl").read_text().splitlines()
     meta = json.loads(log[0])
     assert meta["protocol"] == "control" and meta["params"] > 0
+    # FLOP honesty (ADR 0004): the FLOPs the leaderboard reads (final cumulative_flops)
+    # must be the HONEST TOTAL — training + the eval rollout — not training-only.
+    final = json.loads(log[-1])
+    assert final["eval_flops"] > 0
+    assert final["cumulative_flops"] == final["train_flops"] + final["eval_flops"]
+    assert final["cumulative_flops"] == summary.total_flops

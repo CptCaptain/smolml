@@ -125,7 +125,9 @@ def distill_train_run(
                     {
                         "type": "step",
                         "step": step,
-                        "cumulative_flops": cumulative,
+                        "cumulative_flops": cumulative + r.flops.total,
+                        "train_flops": cumulative,
+                        "eval_flops": r.flops.total,
                         "mean_reward": r.mean_reward,
                         "regret": r.regret,
                         "world_model_bits": r.world_model_bits,
