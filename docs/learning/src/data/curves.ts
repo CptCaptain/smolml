@@ -422,6 +422,73 @@ export const deltaFull: Series[] = [
   },
 ];
 
+// ── Interactive-demo model layer — HUD facts (params + per-step FLOPs) ────────
+// The single source of truth for the two runnable in-page demos' HUD readouts,
+// transcribed verbatim from the demo model layer's engineer→docs-builder handoff
+// (docs/learning/public/js/models/README.md, the "HUD numbers" table) and its
+// parity-validated reference bpb. The browser runs the JS ports live (the byte
+// race is predict-then-learn over the 2,048-byte enwik8 seed stream; the cursor
+// chase is sense→act→move); these constants are only the HUD numbers. `config`
+// and `weights` are NOT here — each marker reads those from the fixtures/weights
+// JSON at build time (the fixture `config` is the single source of truth for
+// create()), exactly as ControlRollout reads its rollout JSON.
+//
+// Role colors (reused, no new token): byte race — context_mixing = reference blue,
+// delta_mix = fast_weight orange (it IS a delta-rule fast weight, the B.4 family),
+// transformer = transformer green. Cursor chase — keeps the in-context-control
+// page's ControlRollout legend: peak/cursor = reference blue, concentration heat =
+// amber accent, the minimal organism chemotaxis_min = the green "agent"; the two
+// heavier reservoir controllers take fast_weight orange and pc_refine rose.
+
+export interface DemoByteModel {
+  id: "context_mixing" | "delta_mix" | "transformer";
+  label: string;
+  role: SeriesRole;
+  params: number;
+  /** steady-state HUD FLOPs per byte (README table). */
+  flopsPerByte: number;
+  /** regime caveat for the FLOP figure, if any. */
+  flopsNote?: string;
+  /** parity reference: cumulative bpb over the full 2,048-byte seed stream. */
+  refBpb: number;
+}
+
+export const demoByteModels: DemoByteModel[] = [
+  { id: "context_mixing", label: "context_mixing", role: "reference", params: 0, flopsPerByte: 9493, refBpb: 4.1682 },
+  { id: "delta_mix", label: "delta_mix", role: "fast_weight", params: 0, flopsPerByte: 18248, refBpb: 4.1624 },
+  {
+    id: "transformer",
+    label: "transformer",
+    role: "transformer",
+    params: 82240,
+    flopsPerByte: 11550720,
+    flopsNote: "steady-state recompute, ctx 64 — 196,608 while the window is still filling",
+    refBpb: 2.6978,
+  },
+];
+
+export interface DemoControlModel {
+  id: "chemotaxis_min" | "reservoir" | "reservoir_plastic";
+  label: string;
+  role: SeriesRole;
+  params: number;
+  /** HUD FLOPs per control step / token (README table). */
+  flopsPerStep: number;
+  flopsNote?: string;
+}
+
+export const demoControlModels: DemoControlModel[] = [
+  { id: "chemotaxis_min", label: "chemotaxis_min", role: "transformer", params: 5, flopsPerStep: 66 },
+  { id: "reservoir", label: "reservoir", role: "fast_weight", params: 5515, flopsPerStep: 9995 },
+  {
+    id: "reservoir_plastic",
+    label: "reservoir_plastic",
+    role: "pc_refine",
+    params: 5515,
+    flopsPerStep: 12881,
+    flopsNote: "9,995 fwd + 2,886 online update",
+  },
+];
 // ── C.A: in-context control candidates on the chemotaxis rung ─────────────────
 // Source: the researcher findings note (control-candidates-findings.md). Every
 // number was reproduced by the researcher and the FLOP accounting was cross-vendor

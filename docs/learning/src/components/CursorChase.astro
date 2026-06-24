@@ -1,0 +1,30 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { demoControlModels } from "../data/curves";
+// Marker for the cursor-follow chemotaxis chase. Reads chemotaxis_min's create
+// config and the two reservoirs' exported weights at build time and inlines
+// them; the ring env (width / levels / sigma) comes from the chemotaxis fixture
+// `env` block. The page loads the control ports first (Layout `scripts` prop),
+// then public/js/compendium.js mounts this. Anchor on process.cwd()
+// (= docs/learning during build/dev), NOT import.meta.url. See PROCESS.md.
+const demos = path.join(process.cwd(), "public", "data", "demos");
+const readJSON = (f: string) => JSON.parse(readFileSync(path.join(demos, f), "utf8"));
+
+const chemo = readJSON("chemotaxis_min.fixture.json");
+// chemotaxis_min needs only config; the reservoirs read config from their own
+// weights JSON, so they need `weights` (the fixture config is the source of
+// truth for create()).
+const createOpts: Record<string, unknown> = {
+  chemotaxis_min: { config: chemo.config },
+  reservoir: { weights: readJSON("reservoir.weights.json") },
+  reservoir_plastic: { weights: readJSON("reservoir_plastic.weights.json") },
+};
+const models = demoControlModels.map((m) => ({ ...m, ...createOpts[m.id] }));
+const data = { env: chemo.env, models };
+const json = JSON.stringify(data).replace(/</g, "\\u003c");
+---
+
+<figure class="chase" data-widget="cursorchase">
+  <script type="application/json" is:inline set:html={json} />
+</figure>

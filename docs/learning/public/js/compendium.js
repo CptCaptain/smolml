@@ -668,6 +668,358 @@
     update();
   }
 
+  // ══ Interactive-demo helpers (shared by the two runnable model demos) ═════
+  // The byte race + the cursor chase both run the parity-validated JS model
+  // layer live (loaded as classic scripts before this file). They share a
+  // transport (Step / Play / Reset on a timer) and number formatting; factored
+  // here per the rule of two. The model layer attaches to window.SmolModels /
+  // window.SmolDemos.
+  function humanFlops(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
+    return "" + n;
+  }
+  // Byte -> a display glyph: printable ASCII + Latin-1 supplement as the char,
+  // space/newline/tab as marks, control/C1 bytes as a middot.
+  function byteGlyph(b) {
+    if (b === 32) return "\u2423";
+    if (b === 10) return "\u21b5";
+    if (b === 9) return "\u21e5";
+    if (b === 13) return "\u23ce";
+    if (b < 32 || (b >= 127 && b <= 160)) return "\u00b7";
+    return String.fromCharCode(b);
+  }
+  // Wire Step/Play/Reset on `root` (buttons carry data-act). `h`:
+  //   step(), reset(), atEnd():bool, interval:ms, onState(playing):void.
+  // `atEnd` lets the byte race stop at the stream end; the (endless) cursor
+  // chase returns false. Returns { stop } (used on edit/teardown).
+  function wireTransport(root, h) {
+    var playing = false, timer = null;
+    var reduced = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function setState(p) { playing = p; if (h.onState) h.onState(p); }
+    function hardStop() { playing = false; clearTimeout(timer); if (h.onState) h.onState(false); }
+    function loop() {
+      clearTimeout(timer);
+      if (playing && !h.atEnd()) {
+        timer = setTimeout(function () {
+          if (!playing) return;
+          h.step();
+          if (h.atEnd()) { setState(false); return; }
+          loop();
+        }, h.interval || 200);
+      } else if (h.atEnd()) { setState(false); }
+    }
+    root.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-act]"); if (!b) return;
+      var a = b.getAttribute("data-act");
+      if (a === "step") { playing = false; clearTimeout(timer); if (!h.atEnd()) h.step(); setState(false); }
+      else if (a === "play") { if (reduced || h.atEnd()) return; playing = !playing; setState(playing); loop(); }
+      else if (a === "reset") { playing = false; clearTimeout(timer); h.reset(); setState(false); }
+    });
+    // prefers-reduced-motion: no auto-play timer — fall back to Step-only (hide Play).
+    if (reduced) { var pb = root.querySelector('[data-act="play"]'); if (pb) { pb.hidden = true; pb.style.display = "none"; pb.setAttribute("aria-hidden", "true"); } }
+    return { stop: hardStop };
+  }
+
+  // ══ AutocompleteRace (live byte loss-per-FLOP race) ═══════════════════════
+  // Three byte models predict the SAME editable enwik8 stream live: each runs
+  // predict-then-learn (create once, then step per byte — fold the revealed
+  // byte, adapt online, read the next-byte probabilities). Per model: top-k
+  // next-char bars, cumulative bpb (= Σ −log2 p(nextByte) / bytes; byte 0 = 8
+  // bits), top-1 hit-rate, and the HUD FLOPs/byte — so the ~1000× transformer
+  // cost shows against the ~10k-FLOP online learners. Mirrors parity.mjs's byte
+  // loop; the editable text IS the stream (latin-1: text.charCodeAt(i)&0xff ==
+  // the enwik8 byte). Shell built once; only the panels/context mutate per step.
+  function mountAutocompleteRace(root) {
+    var SM = window.SmolModels, SD = window.SmolDemos;
+    var d = readData(root), defs = d.models || [], seedText = d.seedText || "";
+    if (!SM || !SD) { root.innerHTML = '<p class="demo-err">interactive model layer not loaded</p>'; return; }
+
+    var stream = [];
+    function deriveStream(text) { var n = text.length, a = new Array(n); for (var i = 0; i < n; i++) a[i] = text.charCodeAt(i) & 0xff; return a; }
+    function fresh(def) {
+      var opts = {};
+      if (def.config) opts.config = def.config;
+      if (def.weights) opts.weights = def.weights;
+      return { def: def, model: SM[def.id], state: SM[def.id].create(opts), pred: null, totalBits: 0, folded: 0, hits: 0, hitDenom: 0 };
+    }
+    var runs = [], pos = 0;
+    function atEnd() { return pos >= stream.length; }
+    function reset() {
+      stream = deriveStream(root.querySelector(".race-text").value);
+      runs = defs.map(fresh); pos = 0; update();
+    }
+    function step() {
+      if (atEnd()) return;
+      var k = pos, b = stream[k], last = (k === stream.length - 1);
+      for (var i = 0; i < runs.length; i++) {
+        var r = runs[i], p, am;
+        if (r.pred === null) { p = 1 / 256; am = -1; } // byte 0: uniform prior, no top-1 credit
+        else { p = r.pred[b]; am = SD.argmax(r.pred); }
+        r.totalBits += -Math.log2(p);
+        if (k >= 1) { r.hitDenom++; if (am === b) r.hits++; }
+        r.folded = k + 1; // bytes SCORED so far — the bpb denominator
+        // Prequential folds n−1 times: skip folding the final byte (its prediction
+        // would never be scored) so executed model.steps == scored predictions.
+        if (!last) { var out = r.model.step(r.state, b, k); r.state = out.state; r.pred = out.probs; }
+      }
+      pos = k + 1; update();
+    }
+
+    function topk(pred, n) {
+      var ranked = []; for (var b = 0; b < 256; b++) ranked.push({ b: b, p: pred[b] });
+      ranked.sort(function (a, c) { return c.p - a.p; });
+      return ranked.slice(0, n);
+    }
+    function panelHtml(r) {
+      var def = r.def, color = ROLE_COLOR[def.role] || ROLE_COLOR.neutral;
+      var bpb = r.folded > 0 ? r.totalBits / r.folded : 0;
+      var hit = r.hitDenom > 0 ? (r.hits / r.hitDenom * 100) : 0;
+      var truth = atEnd() ? -1 : stream[pos];
+      var s = '<div class="race-phead"><span class="race-swatch" style="background:' + color + '"></span><span class="race-name">' + def.label + '</span>';
+      s += '<span class="race-flop" title="' + (def.flopsNote ? def.flopsNote.replace(/"/g, "&quot;") : "steady-state per byte") + '">' + humanFlops(def.flopsPerByte) + ' <span class="race-flop-l">FLOPs/byte</span></span></div>';
+      s += '<div class="race-metrics"><div class="race-metric"><span class="race-metric-v" style="color:' + color + '">' + bpb.toFixed(3) + '</span><span class="race-metric-l">cumulative bpb</span></div>';
+      s += '<div class="race-metric"><span class="race-metric-v">' + hit.toFixed(0) + '%</span><span class="race-metric-l">top-1 hit-rate</span></div>';
+      s += '<div class="race-metric"><span class="race-metric-v race-dim">' + (def.params ? def.params.toLocaleString() : "0") + '</span><span class="race-metric-l">params</span></div></div>';
+      s += '<p class="race-pk">p(next byte) \u2014 top 6</p>';
+      if (r.pred) {
+        var top = topk(r.pred, 6), maxP = top[0].p || 1;
+        top.forEach(function (t) {
+          var isT = t.b === truth;
+          s += '<div class="race-bar' + (isT ? " istrue" : "") + '"><span class="race-bar-ch">' + byteGlyph(t.b) + '</span><span class="race-bar-track"><span class="race-bar-fill" style="width:' + (t.p / maxP * 100).toFixed(1) + '%;background:' + color + '"></span></span><span class="race-bar-p">' + (t.p * 100).toFixed(1) + '%</span></div>';
+        });
+      } else {
+        s += '<p class="race-flat">uniform prior \u2014 press Step or Play to read the stream</p>';
+      }
+      if (truth >= 0) {
+        var pend = r.pred ? (-Math.log2(r.pred[truth])).toFixed(2) : "8.00";
+        s += '<p class="race-pending">next is <code>' + byteGlyph(truth) + '</code> \u2192 pays <strong style="color:' + color + '">' + pend + '</strong> bits</p>';
+      }
+      return s;
+    }
+    function contextHtml() {
+      var lo = Math.max(0, pos - 44), s = lo > 0 ? '<span class="race-ctx-pre">\u2026</span>' : "";
+      for (var i = lo; i < pos; i++) s += '<span class="race-ctx-seen">' + byteGlyph(stream[i]) + '</span>';
+      if (!atEnd()) s += '<span class="race-ctx-cur">\u25ae</span>';
+      return s;
+    }
+    function update() {
+      var ctx = root.querySelector(".race-context"); if (ctx) ctx.innerHTML = contextHtml();
+      var ps = root.querySelector(".race-pos"); if (ps) ps.textContent = "byte " + pos + " / " + stream.length;
+      for (var i = 0; i < runs.length; i++) {
+        var el = root.querySelector('.race-panel[data-model="' + runs[i].def.id + '"]');
+        if (el) el.innerHTML = panelHtml(runs[i]);
+      }
+    }
+    function onState(playing) {
+      var pb = root.querySelector('[data-act="play"]'); if (pb) { pb.textContent = playing ? "Pause" : "Play"; pb.disabled = atEnd() && !playing; }
+      var sb = root.querySelector('[data-act="step"]'); if (sb) sb.disabled = atEnd();
+    }
+    var online = defs.filter(function (m) { return !m.params; }).map(function (m) { return m.label; }).join(" + ");
+    var fl = defs.map(function (m) { return m.flopsPerByte; });
+    var ratio = Math.round(Math.max.apply(null, fl) / Math.min.apply(null, fl)).toLocaleString();
+    var caption = 'Each model runs <strong>predict-then-learn</strong> on the same bytes: it scores the next byte at \u2212log\u2082\u00a0p (byte\u00a00 = 8 bits), then folds it and adapts. The two online learners (<strong>' + online + '</strong>) carry <strong>zero pretrained parameters</strong> and warm up live; the transformer is pretrained. On this seed stream, the transformer reaches the lowest bpb \u2014 but spends \u2248<strong>' + ratio + '\u00d7</strong> the FLOPs per byte of the cheapest online mixer. That gap is the <a href="' + LINK("concepts/loss-per-flop-and-scaling-laws") + '">loss-per-FLOP</a> tension the whole compendium measures. Edit the seed to feed the models your own bytes.';
+
+    root.innerHTML =
+      '<div class="race-head"><div class="race-title">The loss-per-FLOP race \u2014 three byte models read the same stream, live</div>' +
+      '<div class="demo-transport"><button type="button" data-act="step">Step</button>' +
+      '<button type="button" class="primary" data-act="play">Play</button>' +
+      '<button type="button" data-act="reset">Reset</button><span class="race-pos"></span></div></div>' +
+      '<label class="race-seed">editable seed \u2014 enwik8 @ 2,000,000 (the shared byte stream)' +
+      '<textarea class="race-text" rows="3" spellcheck="false" aria-label="editable byte stream"></textarea></label>' +
+      '<div class="race-context" aria-label="revealed context and cursor"></div>' +
+      '<div class="race-grid">' + defs.map(function (def) { return '<div class="race-panel" data-model="' + def.id + '"></div>'; }).join("") + '</div>' +
+      '<figcaption class="figcaption">' + caption + '</figcaption>';
+    root.querySelector(".race-text").value = seedText;
+    var transport = wireTransport(root, { step: step, reset: reset, atEnd: atEnd, interval: 140, onState: onState });
+    var inputTimer = null;
+    root.addEventListener("input", function (e) {
+      if (!e.target.classList.contains("race-text")) return;
+      clearTimeout(inputTimer);
+      inputTimer = setTimeout(function () { transport.stop(); reset(); }, 300);
+    });
+    reset(); onState(false);
+  }
+
+  // ══ CursorChase (interactive chemotaxis cursor-follow) ════════════════════
+  // A concentration field whose PEAK drifts toward the cursor's x at the env's
+  // own rate (≤1 cell/tick, ChemoEnv's drift — so the peak never jumps out of an
+  // organism's local sensing range; SmolDemos.concentration on the W-cell ring).
+  // Each control model drives an organism that senses only
+  // its own cell, quantized to a level, and chemotaxes to chase the peak: fold the
+  // concentration token, take the greedy action argmax(logits[levels..levels+N)),
+  // fold the action token, move, accrue reward = concentration at the new cell —
+  // exactly parity.mjs's control tape (EVEN pos = sense, ODD = action). All three
+  // step the same field every tick so the reward race is comparable; the toggles
+  // only show/hide a marker. The HUD makes the FLOP/step contrast (66 vs ~10k) and
+  // the honest tracking gap visible. Built once; the canvas redraws per tick.
+  function mountCursorChase(root) {
+    var SM = window.SmolModels, SD = window.SmolDemos;
+    var d = readData(root), defs = d.models || [], env = d.env || { width: 16, levels: 8, sigma: 2 };
+    if (!SM || !SD) { root.innerHTML = '<p class="demo-err">interactive model layer not loaded</p>'; return; }
+    var W = env.width, L = env.levels, cfgF = { width: W, sigma: env.sigma }, N_ACT = SD.N_ACTIONS;
+    var START = Math.floor(W / 2);
+    var BLUE = ROLE_COLOR.reference, AMBER = "232,181,77";
+    var CW = 720, CH = 210, PADL = 10, PADR = 10, FTOP = 30, FBOT = 138, LANE0 = 150, LANEH = 13, AXIS = 188;
+    var iw = CW - PADL - PADR, cw = iw / W;
+    function cellCX(x) { return PADL + (x + 0.5) * cw; }
+
+    var shown = {};
+    function fresh(def) {
+      var opts = {};
+      if (def.config) opts.config = def.config;
+      if (def.weights) opts.weights = def.weights;
+      return { def: def, model: SM[def.id], state: SM[def.id].create(opts), pos: 0, agentX: START, cumR: 0, steps: 0, lastA: 1 };
+    }
+    var runs = [], peakX = W - 2, cursorX = peakX, steps = 0, ctx = null, canvas = null;
+    var announcedLeader = null, announcedAt = -999; // aria-live throttle state
+    var RATE = 0.3, driftPhase = 0; // ChemoEnv drift pace (fixtures use 0.2–0.3): the integer peak jumps ±1 toward the cursor only ~every 1/RATE ticks, staying on a cell and within a local climber's sensing range
+    function ringDelta(target, cur) { var dd = ((target - cur) % W + W) % W; if (dd > W / 2) dd -= W; return dd; } // shortest signed ring distance
+    function atEnd() { return false; } // the chase is endless; Reset zeroes it
+    function reset() { peakX = W - 2; cursorX = peakX; driftPhase = 0; runs = defs.map(fresh); steps = 0; var sl = root.querySelector(".chase-cursor"); if (sl) sl.value = cursorX; draw(); updateHud(); }
+    // ChemoEnv order (smolml/envs/chemotaxis.py, parity.mjs): sense at the CURRENT
+    // field, act, move the agent — THEN drift the shared peak once — THEN reward at
+    // the new cell under the new field. (One shared cursor-driven peak, three racers.)
+    function senseActMove(r) {
+      var raw = SD.concentration(r.agentX, peakX, cfgF), level = SD.quantizeLevel(raw, L);
+      var out = r.model.step(r.state, level, r.pos); r.state = out.state;
+      var a = SD.argmax(out.logits, L, L + N_ACT) - L;
+      r.pos++; out = r.model.step(r.state, L + a, r.pos); r.state = out.state; r.pos++;
+      r.agentX = ((r.agentX + SD.ACTION_DELTAS[a]) % W + W) % W; r.lastA = a;
+    }
+    function step() {
+      steps++;
+      for (var i = 0; i < runs.length; i++) senseActMove(runs[i]);   // sense (current field) + act + move
+      // THEN drift the peak toward your cursor with ChemoEnv's exact mechanic: an
+      // integer peak that jumps ±1 only when a phase accumulator (RATE/tick) crosses
+      // 1 — keeps the peak on a cell and within a local climber's sensing range.
+      var tgt = ((Math.round(cursorX) % W) + W) % W, dd = ringDelta(tgt, peakX);
+      if (dd !== 0) { driftPhase += RATE; if (driftPhase >= 1) { driftPhase -= 1; peakX = ((peakX + (dd > 0 ? 1 : -1)) % W + W) % W; } }
+      else driftPhase = 0;
+      for (var j = 0; j < runs.length; j++) {                         // THEN reward at the new cell under the new field
+        var r = runs[j]; r.cumR += SD.concentration(r.agentX, peakX, cfgF); r.steps++;
+      }
+      draw(); updateHud();
+    }
+
+    function tri(cx, cy, r, up, color) {
+      ctx.fillStyle = color; ctx.beginPath();
+      if (up) { ctx.moveTo(cx, cy); ctx.lineTo(cx - r, cy + r * 1.3); ctx.lineTo(cx + r, cy + r * 1.3); }
+      else { ctx.moveTo(cx, cy + r * 1.3); ctx.lineTo(cx - r, cy); ctx.lineTo(cx + r, cy); }
+      ctx.closePath(); ctx.fill();
+    }
+    function draw() {
+      if (!ctx) return;
+      ctx.clearRect(0, 0, CW, CH);
+      ctx.fillStyle = "#16130e"; ctx.fillRect(0, 0, CW, CH);
+      // cell tints — the quantized concentration each organism actually senses
+      for (var x = 0; x < W; x++) {
+        var c = SD.concentration(x, peakX, cfgF), a = Math.pow(Math.max(0, Math.min(1, c)), 0.55);
+        ctx.fillStyle = "rgba(" + AMBER + "," + a.toFixed(3) + ")";
+        ctx.fillRect(PADL + x * cw + 1, FTOP, cw - 2, FBOT - FTOP);
+      }
+      // continuous field curve (aligned to cell centers; wraps on the ring)
+      ctx.beginPath();
+      for (var s = 0; s <= W * 8; s++) {
+        var xx = -0.5 + (s / 8) * 1.0; // -0.5 .. W-0.5
+        var cc = SD.concentration(((xx % W) + W) % W, peakX, cfgF);
+        var px = PADL + (xx + 0.5) * cw, py = FBOT - cc * (FBOT - FTOP);
+        if (s === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = "rgba(" + AMBER + ",0.9)"; ctx.lineWidth = 1.6; ctx.stroke();
+      // the field peak (drifts toward your cursor at the env's rate)
+      var pkx = PADL + (peakX + 0.5) * cw;
+      ctx.strokeStyle = BLUE; ctx.lineWidth = 1.3; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(pkx, FTOP - 9); ctx.lineTo(pkx, FBOT); ctx.stroke(); ctx.setLineDash([]);
+      tri(pkx, FTOP - 10, 6, false, BLUE);
+      // your cursor target (faint) while the peak is still catching up
+      if (Math.abs(ringDelta(cursorX, peakX)) > 0.4) {
+        var cgx = PADL + (cursorX + 0.5) * cw;
+        ctx.strokeStyle = "rgba(154,142,118,0.7)"; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+        ctx.beginPath(); ctx.moveTo(cgx, FTOP - 9); ctx.lineTo(cgx, FBOT); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.fillStyle = "#9a8e76"; ctx.font = "11px ui-monospace, monospace"; ctx.textAlign = "left";
+      ctx.fillText("peak \u25bc drifts toward your cursor", PADL + 2, 16);
+      // organisms, one lane each
+      for (var i = 0; i < runs.length; i++) {
+        var r = runs[i]; if (shown[r.def.id] === false) continue;
+        var col = ROLE_COLOR[r.def.role] || ROLE_COLOR.neutral, ly = LANE0 + i * LANEH;
+        tri(cellCX(r.agentX), ly, 6, true, col);
+      }
+      // axis ticks
+      ctx.fillStyle = "#9a8e76"; ctx.textAlign = "center";
+      [0, 4, 8, 12, 15].forEach(function (cc2) { ctx.fillText("" + cc2, cellCX(cc2), AXIS); });
+      ctx.fillText("ring cell 0\u201315 (wraps) \u2014 organisms (\u25b2) chase the peak (\u25bc)", CW / 2, CH - 6);
+    }
+    function hudRow(def) {
+      var col = ROLE_COLOR[def.role] || ROLE_COLOR.neutral;
+      return '<div class="chase-row" data-model="' + def.id + '">' +
+        '<label class="chase-toggle"><input type="checkbox" data-show="' + def.id + '" checked><span class="chase-swatch" style="background:' + col + '"></span><span class="chase-name">' + def.label + '</span></label>' +
+        '<span class="chase-cell"><span class="chase-cv">' + def.params.toLocaleString() + '</span><span class="chase-cl">params</span></span>' +
+        '<span class="chase-cell" title="' + (def.flopsNote ? def.flopsNote.replace(/"/g, "&quot;") : "per control step") + '"><span class="chase-cv">' + def.flopsPerStep.toLocaleString() + '</span><span class="chase-cl">FLOPs/step</span></span>' +
+        '<span class="chase-cell"><span class="chase-cv chase-mean" style="color:' + col + '">0.000</span><span class="chase-cl">mean reward \u2191</span></span>' +
+        '<span class="chase-cell"><span class="chase-cv chase-cum">0.0</span><span class="chase-cl">cumulative</span></span></div>';
+    }
+    function updateHud() {
+      var best = -1, bestId = null;
+      runs.forEach(function (r) { var m = r.steps ? r.cumR / r.steps : 0; if (m > best) { best = m; bestId = r.def.id; } });
+      runs.forEach(function (r) {
+        var row = root.querySelector('.chase-row[data-model="' + r.def.id + '"]'); if (!row) return;
+        row.querySelector(".chase-mean").textContent = (r.steps ? r.cumR / r.steps : 0).toFixed(3);
+        row.querySelector(".chase-cum").textContent = r.cumR.toFixed(1);
+        row.classList.toggle("dim", shown[r.def.id] === false);
+        row.classList.toggle("lead", r.def.id === bestId && steps > 0);
+      });
+      var st = root.querySelector(".chase-steps"); if (st) st.textContent = steps + " steps";
+      // aria-live summary: announce on leader change or every 30 steps (no SR spam)
+      var live = root.querySelector(".chase-status");
+      if (live && (bestId !== announcedLeader || steps - announcedAt >= 30 || steps === 0)) {
+        announcedLeader = bestId; announcedAt = steps;
+        if (steps === 0) { live.textContent = "Ready \u2014 press Play or Step; drag the peak-target slider or move your cursor."; }
+        else {
+          var leadDef = null; for (var di = 0; di < defs.length; di++) if (defs[di].id === bestId) leadDef = defs[di];
+          var parts = runs.map(function (r) { return r.def.label + " " + (r.steps ? r.cumR / r.steps : 0).toFixed(2); });
+          live.textContent = "After " + steps + " steps, leader: " + (leadDef ? leadDef.label + " (" + best.toFixed(2) + " mean reward, " + leadDef.flopsPerStep.toLocaleString() + " FLOPs/step)" : "\u2014") + ". Mean reward \u2014 " + parts.join(", ") + ".";
+        }
+      }
+    }
+
+    root.innerHTML =
+      '<div class="chase-head"><div class="chase-title">Chase the cursor \u2014 three controllers, one peak you drive</div>' +
+      '<div class="demo-transport"><button type="button" data-act="step">Step</button>' +
+      '<button type="button" class="primary" data-act="play">Play</button>' +
+      '<button type="button" data-act="reset">Reset</button><span class="chase-steps"></span></div></div>' +
+      '<canvas class="chase-canvas" width="' + CW + '" height="' + CH + '" role="img" aria-label="Concentration field on a 16-cell ring; the peak drifts toward your cursor (or the peak-target slider) and the three organisms chase it"></canvas>' +
+      '<label class="chase-cursor-l">peak target (ring cell)<input type="range" class="chase-cursor" min="0" max="' + W + '" step="0.5" value="' + (W - 2) + '" aria-label="peak target ring cell \u2014 drag or use arrow keys to move the peak"></label>' +
+      '<p class="chase-hint">Move your cursor across the field \u2014 or drag the <strong>peak-target</strong> slider (arrow keys work) \u2014 and the peak (\u25bc) drifts toward it at the environment\u2019s own pace. Each organism (\u25b2) senses only the concentration at its own cell and chemotaxes to climb. Press <strong>Play</strong> (or Step) and watch who tracks.</p>' +
+      '<div class="chase-hud">' + defs.map(hudRow).join("") + '</div>' +
+      '<p class="chase-status" aria-live="polite"></p>' +
+      '<figcaption class="figcaption">The minimal organism <strong>chemotaxis_min</strong> (5 params, <strong>66 FLOPs/step</strong>) typically tracks tightest; the reservoir family is <strong>~150\u00d7 heavier</strong> per step and \u2014 read honestly \u2014 a weaker tracker here, the loss-per-FLOP discipline carried from byte prediction to <a href="' + LINK("concepts/in-context-control") + '">control</a>. All three race the same field; the checkboxes just show or hide a marker.</figcaption>';
+    canvas = root.querySelector(".chase-canvas"); ctx = canvas.getContext("2d");
+    function setCursorFromEvent(e) {
+      var rect = canvas.getBoundingClientRect();
+      var clientX = e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX;
+      var xb = (clientX - rect.left) / rect.width * CW; // backing-store x
+      var px = (xb - PADL) / cw - 0.5;
+      cursorX = ((px % W) + W) % W;
+      var sl = root.querySelector(".chase-cursor"); if (sl) sl.value = cursorX.toFixed(2);
+      draw();
+    }
+    canvas.addEventListener("pointermove", setCursorFromEvent);
+    canvas.addEventListener("touchmove", function (e) { setCursorFromEvent(e); e.preventDefault(); }, { passive: false });
+    root.addEventListener("input", function (e) {
+      if (!e.target.classList.contains("chase-cursor")) return;
+      var v = parseFloat(e.target.value); if (isNaN(v)) return;
+      cursorX = ((v % W) + W) % W; draw();
+    });
+    root.addEventListener("change", function (e) {
+      var cb = e.target.closest("[data-show]"); if (!cb) return;
+      shown[cb.getAttribute("data-show")] = cb.checked; draw(); updateHud();
+    });
+    wireTransport(root, { step: step, reset: reset, atEnd: atEnd, interval: 110, onState: function (p) { var pb = root.querySelector('[data-act="play"]'); if (pb) pb.textContent = p ? "Pause" : "Play"; } });
+    reset();
+  }
+
   // ── dispatch ──────────────────────────────────────────────────────────────
   var MOUNTERS = {
     chart: mountChart,
@@ -677,7 +1029,9 @@
     codelength: mountCodeLength,
     scaling: mountScaling,
     sourceiv: mountSourceIv,
-    controlrollout: mountControlRollout
+    controlrollout: mountControlRollout,
+    autocompleterace: mountAutocompleteRace,
+    cursorchase: mountCursorChase
   };
   function init() {
     var nodes = document.querySelectorAll("[data-widget]");
