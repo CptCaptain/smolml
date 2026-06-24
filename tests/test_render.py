@@ -8,7 +8,7 @@ from smolml.envs.render import animate_rollout, render_rollout
 
 
 def _synthetic_traj() -> Trajectory:
-    """A hand-built rollout: width=8, 7 field rows, pos/mu length 7, reward/action length 6.
+    """A hand-built rollout: width=8, 7 record-state rows (mu/p/field), reward/action length 6.
 
     Avoids importing ``control_eval`` or training a model — exercises the renderer alone.
     """
@@ -20,16 +20,15 @@ def _synthetic_traj() -> Trajectory:
     # field values are guaranteed within [0, 1] by the 0.5 + 0.5*sin construction.
     pos = [t % width for t in range(steps)]
     mu = [(t * 1.3) % width for t in range(steps)]
-    conc_token = [t % width for t in range(steps)]
+    obs_token = [t % width for t in range(steps)]
     reward = [0.1 * (i + 1) for i in range(steps - 1)]
     action = [i % 3 for i in range(steps - 1)]
+    states = [{"mu": mu[t], "p": pos[t], "field": field[t]} for t in range(steps)]
     return Trajectory(
-        mu=mu,
-        pos=pos,
-        conc_token=conc_token,
-        reward=reward,
+        obs_token=obs_token,
         action=action,
-        field=field,
+        reward=reward,
+        states=states,
     )
 
 

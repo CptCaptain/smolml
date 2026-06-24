@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
-import torch
+
+from smolml.envs.spec import EnvSpec, TapeSpec
 
 N_ACTIONS: int = 3
 ACTION_DELTAS: tuple[int, ...] = (-1, 0, 1)  # LEFT, STAY, RIGHT
@@ -60,13 +61,19 @@ def ringdist(a: float, b: float, width: int) -> int:
 class Environment(Protocol):
     """Minimal feedback-task seam: the scorer/training/candidates depend only on this."""
 
+    n_actions: int
+    horizon: int
+
     def reset(self) -> int: ...
     def step(self, action_idx: int) -> tuple[int, float]: ...
     def oracle_action(self) -> int: ...
+    def record_state(self) -> dict: ...
 
 
 class ChemoEnv:
     """Drifting-gradient ring; the agent senses only the local quantized concentration."""
+
+    n_actions: int = N_ACTIONS
 
     def __init__(self, cfg: ChemoConfig, *, split: str, seed: int):
         self.cfg = cfg
@@ -108,6 +115,13 @@ class ChemoEnv:
     def field(self) -> list[float]:
         return [self._raw(x) for x in range(self.cfg.width)]
 
+    @property
+    def horizon(self) -> int:
+        return self.cfg.horizon
+
+    def record_state(self) -> dict:
+        return {"mu": self.mu, "p": self.p, "field": self.field()}
+
 
 class RandomPolicy:
     def __init__(self, seed: int = 0):
@@ -146,42 +160,23 @@ class RunAndTumble:
 
 @dataclass
 class Trajectory:
-    """A recorded rollout, for rendering and determinism tests."""
+    """A recorded rollout: generic trace + per-env ``record_state`` payloads."""
 
-    mu: list[float]
-    pos: list[int]
-    conc_token: list[int]
-    reward: list[float]
+    obs_token: list[int]
     action: list[int]
-    field: list[list[float]]
-    pred_conc: list[list[float]] | None = None
+    reward: list[float]
+    states: list[dict]
+    pred_obs: list[list[float]] | None = None
 
 
-def make_distillation_batch(
-    cfg: ChemoConfig,
-    split: str,
-    *,
-    batch_size: int,
-    seed: int,
-    device: torch.device,
-    epsilon: float = 0.1,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Roll the run-and-tumble source over fresh episodes -> static next-token tapes.
-
-    Each tape is ``c0 a0 c1 a1 … a_{H-1} c_H`` (length ``2H+1``); returns
-    ``(x, y) = (tape[:-1], tape[1:])`` of shape ``(batch_size, 2H)``.
-    """
-    seq = 2 * cfg.horizon + 1
-    tapes = torch.empty((batch_size, seq), dtype=torch.long)
-    for b in range(batch_size):
-        env = ChemoEnv(cfg, split=split, seed=seed * 100003 + b)
-        pol = RunAndTumble(epsilon=epsilon, seed=seed * 7919 + b)
-        c = env.reset()
-        tape = [c]
-        for _ in range(cfg.horizon):
-            a = pol.act(c)
-            tape.append(action_token(cfg, a))
-            c, _raw = env.step(a)
-            tape.append(c)
-        tapes[b] = torch.tensor(tape, dtype=torch.long)
-    return tapes[:, :-1].contiguous().to(device), tapes[:, 1:].contiguous().to(device)
+def chemo_env_spec(chem: ChemoConfig) -> EnvSpec:
+    """Build the chemotaxis :class:`EnvSpec` — the control spine's env instance #1."""
+    return EnvSpec(
+        env_factory=lambda split, seed: ChemoEnv(chem, split=split, seed=seed),
+        source_factory=lambda seed, epsilon=0.1: RunAndTumble(epsilon=epsilon, seed=seed),
+        tape_spec=TapeSpec(
+            vocab_size=vocab_size(chem),
+            obs_slice=conc_slice(chem),
+            action_slice=action_slice(chem),
+        ),
+    )

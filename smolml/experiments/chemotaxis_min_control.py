@@ -15,7 +15,7 @@ Run (CPU, synthetic; seconds)::
 
 from smolml.control_eval import evaluate_control
 from smolml.control_train import ControlTrainConfig, distill_train_run
-from smolml.envs.chemotaxis import ChemoConfig, vocab_size
+from smolml.envs.chemotaxis import ChemoConfig, chemo_env_spec, vocab_size
 from smolml.envs.render import render_rollout
 from smolml.leaderboard import regenerate_control
 from smolml.models import build_model
@@ -64,7 +64,7 @@ def main() -> None:
 
     res = evaluate_control(
         trained,
-        chem,
+        chemo_env_spec(chem),
         split="eval",
         n_episodes=1,
         seed=0,

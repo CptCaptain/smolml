@@ -11,7 +11,8 @@ import torch
 
 from smolml.control_eval import evaluate_control
 from smolml.device import get_device
-from smolml.envs.chemotaxis import ChemoConfig, make_distillation_batch, vocab_size
+from smolml.envs.chemotaxis import ChemoConfig, chemo_env_spec
+from smolml.envs.spec import distill_seed, make_distillation_batch
 from smolml.models.registry import LanguageModel, build_model
 
 
@@ -64,8 +65,9 @@ def distill_train_run(
     torch.manual_seed(cfg.seed)
     device = get_device(cfg.device)
     chem = ChemoConfig(width=cfg.width, levels=cfg.levels, sigma=cfg.sigma, horizon=cfg.horizon)
+    env_spec = chemo_env_spec(chem)
     mc = dict(cfg.model_config)
-    mc["vocab_size"] = vocab_size(chem)
+    mc["vocab_size"] = env_spec.tape_spec.vocab_size
     need = 2 * cfg.horizon + 1
     mc["max_seq_len"] = max(int(mc.get("max_seq_len", 0)), need)
 
@@ -85,7 +87,7 @@ def distill_train_run(
 
     def evaluate() -> object:
         return evaluate_control(
-            model, chem, split="eval", n_episodes=cfg.eval_episodes, seed=cfg.seed, device=device
+            model, env_spec, n_episodes=cfg.eval_episodes, seed=cfg.seed, device=device
         )
 
     with log_path.open("w") as log:
@@ -143,10 +145,9 @@ def distill_train_run(
         log_step(res)
         while cumulative + step_flops <= cfg.flop_budget:
             x, y = make_distillation_batch(
-                chem,
-                "train",
+                env_spec,
                 batch_size=cfg.batch_size,
-                seed=cfg.seed * 1009 + step,
+                seed=distill_seed(cfg.seed, step),
                 device=device,
                 epsilon=cfg.epsilon,
             )

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import torch
 
 from smolml.control_eval import evaluate_control
-from smolml.envs.chemotaxis import ChemoConfig, action_token, vocab_size
+from smolml.envs.chemotaxis import ChemoConfig, action_token, chemo_env_spec, vocab_size
 from smolml.flops import FlopBreakdown
 from smolml.models.registry import LanguageModel
 
@@ -40,7 +40,7 @@ def test_uniform_world_model_bits_near_log2_levels():
     cfg = ChemoConfig(width=16, levels=8, horizon=8)
     model = _FixedActionModel(vocab_size(cfg), 2 * cfg.horizon + 1, action_token(cfg, 1))
     res = evaluate_control(
-        model, cfg, split="eval", n_episodes=4, seed=0, device=torch.device("cpu")
+        model, chemo_env_spec(cfg), split="eval", n_episodes=4, seed=0, device=torch.device("cpu")
     )
     assert math.isfinite(res.world_model_bits)
     assert abs(res.world_model_bits - math.log2(cfg.levels)) < 0.2
@@ -52,7 +52,7 @@ def test_env_responds_to_actions_no_predetermined_feedback():
     right = _FixedActionModel(vocab_size(cfg), 2 * cfg.horizon + 1, action_token(cfg, 2))
     rl = evaluate_control(
         left,
-        cfg,
+        chemo_env_spec(cfg),
         split="eval",
         n_episodes=1,
         seed=3,
@@ -62,7 +62,7 @@ def test_env_responds_to_actions_no_predetermined_feedback():
     )
     rr = evaluate_control(
         right,
-        cfg,
+        chemo_env_spec(cfg),
         split="eval",
         n_episodes=1,
         seed=3,
@@ -70,7 +70,9 @@ def test_env_responds_to_actions_no_predetermined_feedback():
         greedy=True,
         record=True,
     )
-    assert rl.trajectory.pos != rr.trajectory.pos  # opposite moves -> different trajectories
+    lpos = [s["p"] for s in rl.trajectory.states]
+    rpos = [s["p"] for s in rr.trajectory.states]
+    assert lpos != rpos  # opposite moves -> different trajectories
 
 
 def test_rollout_flop_accounting_matches_analytic():
@@ -86,7 +88,7 @@ def test_rollout_flop_accounting_matches_analytic():
     )
     model = Transformer(tcfg)
     res = evaluate_control(
-        model, cfg, split="eval", n_episodes=1, seed=1, device=torch.device("cpu")
+        model, chemo_env_spec(cfg), split="eval", n_episodes=1, seed=1, device=torch.device("cpu")
     )
     expected = sum(model.decode_step_flops(k).forward for k in range(1, 2 * cfg.horizon + 1))
     assert res.flops.forward == expected
@@ -98,7 +100,13 @@ def test_regret_is_oracle_minus_agent_and_positive_for_idle():
     cfg = ChemoConfig(width=16, levels=8, horizon=16)
     model = _FixedActionModel(vocab_size(cfg), 2 * cfg.horizon + 1, action_token(cfg, 1))
     res = evaluate_control(
-        model, cfg, split="eval", n_episodes=8, seed=0, device=torch.device("cpu"), greedy=True
+        model,
+        chemo_env_spec(cfg),
+        split="eval",
+        n_episodes=8,
+        seed=0,
+        device=torch.device("cpu"),
+        greedy=True,
     )
     assert res.regret > 0.0
     assert math.isclose(res.regret, res.mean_oracle_reward - res.mean_reward, rel_tol=1e-9)
