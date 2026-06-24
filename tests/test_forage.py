@@ -211,12 +211,12 @@ def test_distillation_tape_format_and_shift():
 
 def test_metric_bounds_mc_pinned():
     m = _reference_means()
-    assert abs(m["oracle"][0] - 0.335) < 0.03
-    assert abs(m["always_eat"][0] - (-0.329)) < 0.03
+    assert abs(m["oracle"][0] - 0.96) < 0.05  # camp g => ~+1/step (the true optimum)
+    assert abs(m["always_eat"][0] - (-0.333)) < 0.04  # blind camp = +1 w.p 1/K else poison
     assert m["always_right"][0] == 0.0 and m["always_left"][0] == 0.0
     assert abs(m["random"][0] - (-0.112)) < 0.03
     assert m["always_right"][0] < m["wsls"][0] < m["oracle"][0]  # source strictly between
-    assert abs(m["wsls"][0] - 0.283) < 0.04
+    assert abs(m["wsls"][0] - 0.85) < 0.06  # search early, camp g late
 
 
 # --- REFLEX-PROOF: no fixed policy competes; learning is required ---------------

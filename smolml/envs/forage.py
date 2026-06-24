@@ -54,10 +54,11 @@ class ForageEnv:
     """Stationary cue ring; the agent senses only its current cell's combined obs.
 
     Cells are i.i.d. uniform cue types fixed for the whole episode; exactly one type
-    ``g`` pays ``+1`` on EAT (others ``-1``: poison). EAT advances (no camping), so
-    food never depletes and recognizing the rewarding *type* is the efficient policy.
-    The combined obs symbol packs the cell type after the move with the last action's
-    reward, keeping both the current cue and the reward signal in a single token.
+    ``g`` pays ``+1`` on EAT (others ``-1``: poison). EAT eats IN PLACE (re-eatable), so
+    camping a ``g`` cell is the ``+1``/step optimum (the oracle reference ⇒ regret ≥ 0)
+    while blind eating is net-negative poison; food never depletes (cells are stationary).
+    The combined obs packs the current cell type with the last action's reward, keeping
+    both the current cue and the reward signal in one token.
     """
 
     n_actions: int = N_ACTIONS
@@ -78,8 +79,7 @@ class ForageEnv:
 
     def step(self, action_idx: int) -> tuple[int, float]:
         if action_idx == EAT:
-            reward = 1 if self.cells[self.p] == self.g else -1
-            self.p = (self.p + 1) % self.cfg.width
+            reward = 1 if self.cells[self.p] == self.g else -1  # eat in place; re-eatable
         elif action_idx == LEFT:
             reward = 0
             self.p = (self.p - 1) % self.cfg.width

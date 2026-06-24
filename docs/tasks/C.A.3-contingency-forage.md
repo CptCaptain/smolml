@@ -27,26 +27,27 @@ sampled i.i.d. uniform at episode start and **stationary thereafter** (cells nev
 agent at position `p_t` senses the cue type at its own cell. Actions: `{LEFT(−1), EAT, RIGHT(+1)}`.
 
 - **Latent reward-contingency.** Exactly one type `g ∈ [0,K)` is *good* this episode, drawn **uniform
-  per episode**. `EAT` of the current cell → reward `+1` if its type `== g` else **`−1` (poison)**,
-  then the agent **advances one cell** (`p += 1`). `LEFT`/`RIGHT` move without eating (reward `0`).
+  per episode**. `EAT` eats the current cell **in place** (re-eatable; the agent does not move) →
+  reward `+1` if its type `== g` else **`−1` (poison)**. `LEFT`/`RIGHT` move without eating (reward `0`).
   `g` AND the layout are **fresh every episode** (train/eval = disjoint seed bands), so there is **no
   fixed mapping to memorize**; only the inference algorithm ("eat the type that pays, skip the type
   that poisons") generalizes.
 - **Why these exact dynamics (all three properties are load-bearing, MC-verified):**
   - **Poison (`−1`)** ⇒ blind eating is net-negative ⇒ **reflex-proof** (a weightless `always-EAT`
     cannot win).
-  - **Stationary cells + `EAT`-advances (no camping)** ⇒ the agent re-encounters each `g` cell every
-    lap, so the food **never depletes** (the oracle's reward is flat, not decaying) ⇒ there is a stable
-    target to learn ⇒ the rung is **distillable** (a learner improves within-episode). Eating cannot
-    camp one cell, so recognizing the rewarding **type** (to eat fresh `g` cells on sight) is the
-    efficient strategy — cell-by-cell memory also works but is slower (higher regret). Honest framing:
-    the rung *requires in-context adaptation*; type-generalization is the FLOP-efficient solution.
+  - **Stationary cells + `EAT`-in-place** ⇒ camping a `g` cell yields `+1`/step — the **true optimum**
+    and the oracle reference, so **regret ≥ 0** — while food **never depletes** (cells never change),
+    a stable target ⇒ the rung is **distillable** (a learner improves within-episode). To camp `g` the
+    agent must first *identify* which type pays (from poison/reward feedback); recognizing the
+    rewarding **type** is what minimizes search regret. Honest framing: the rung *requires in-context
+    contingency identification*; type-generalization is the FLOP-efficient way to find `g` fast.
 - **Determinism.** `ForageEnv(split, seed)` fully reproducible: `reset() -> obs0`; `step(action) ->
   (obs_next, reward)`; `oracle_action()`; exposes `horizon`, `n_actions`.
-- **MC-pinned references (W=16, K=3, H=64; pin in tests to these ± tol):** `oracle` (knows `g`; EAT
-  when on `g` else move) **≈ +0.335**, regret ≈ 0; `always_eat` (the reflex) **≈ −0.329**;
-  `always_right` (best contingency-blind fixed policy) **≈ 0.000**; `random` ≈ −0.112; the distillation
-  source `win_stay_lose_shift` **≈ +0.283** with within-episode improvement (1st ≈ +0.25, 2nd ≈ +0.31).
+- **MC-pinned references (W=16, K=3, H=64; pin in tests to these ± tol):** `oracle` (knows `g`; camps it
+  — EAT on `g` else search) **≈ +0.97** (≈ +1/step, the ceiling), regret ≈ 0; `always_eat` (blind camp)
+  **≈ −0.333**; `always_right` (best contingency-blind fixed policy) **≈ 0.000**; `random` ≈ −0.112; the
+  distillation source `win_stay_lose_shift` **≈ +0.85** with within-episode improvement (1st ≈ +0.79,
+  2nd ≈ +0.91).
   - **Oracle = the regret reference**, defined under the SAME local sensing as the agent (it knows `g`
     but not cell positions), so regret is purely the cost of not knowing `g` (learning-attributable).
     Pinned by a Monte-Carlo estimate in a test; it **upper-bounds every contingency-blind policy**
