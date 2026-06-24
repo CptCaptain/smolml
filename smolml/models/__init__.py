@@ -5,6 +5,7 @@ decorators run on import), so ``list_models()`` is populated.
 """
 
 from smolml.models.chemotaxis_min import ChemoMinConfig, ChemotaxisMin
+from smolml.models.column_mix import ColumnMix, ColumnMixConfig
 from smolml.models.context_mixing import ContextMixing, ContextMixingConfig
 from smolml.models.delta_mix import DeltaMix, DeltaMixConfig
 from smolml.models.fast_weight import FastWeightConfig, FastWeightMemory
@@ -39,6 +40,8 @@ __all__ = [
     "ChemoMinConfig",
     "ChemotaxisMin",
     "ContextMixingConfig",
+    "ColumnMix",
+    "ColumnMixConfig",
     "DeltaMix",
     "DeltaMixConfig",
     "PCRefine",
