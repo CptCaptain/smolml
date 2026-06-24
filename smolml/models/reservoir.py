@@ -40,6 +40,7 @@ import torch
 from torch import nn
 
 from smolml.data.corpus import VOCAB_SIZE
+from smolml.envs.chemotaxis import N_ACTIONS
 from smolml.flops import FlopBreakdown, gather_flops, matmul_flops, pointwise_flops
 from smolml.models.registry import DecodeState, LanguageModel, register_model
 
@@ -208,3 +209,273 @@ class Reservoir(LanguageModel):
     @classmethod
     def from_config(cls, config: dict[str, object]) -> "Reservoir":
         return cls(ReservoirConfig(**config))
+
+
+@dataclass
+class ReservoirPlasticConfig:
+    """Frozen echo-state core + an ONLINE reward-modulated PLASTIC readout (C.A.1b).
+
+    Mirrors :class:`ReservoirConfig` (same frozen core, same default sizing) and adds the
+    three local-rule rates. The seed ``nn.Linear`` readout is held as an ``nn.Parameter``
+    (counted in ``num_params`` for memory parity, like ``reservoir``) and cloned into the
+    decode cache as the PLASTIC ``(W, b)`` that adapt online in :meth:`ReservoirPlastic.step`.
+    The headline run does ~0 distillation: all learning happens online in ``step``.
+
+    ``d_res=374`` lands ``num_params`` at 148,115 (same tensors as ``reservoir``), under the
+    transformer bar's 148,608, so the regret-per-FLOP comparison is fair on the param axis.
+    """
+
+    d_res: int = 374
+    leak: float = 0.6
+    spectral_radius: float = 0.9
+    seed: int = 0
+    lr_wm: float = 0.5  # world-model delta-rule rate (conc_slice columns)
+    lr_pol: float = 0.03  # reward-modulated Hebbian policy rate (action_slice columns)
+    reward_decay: float = 0.7  # leaky reward-baseline rate (fast ⇒ adv ≈ Δconcentration)
+    vocab_size: int = VOCAB_SIZE
+    max_seq_len: int = 256
+
+    def __post_init__(self):
+        if not 0.0 < self.leak <= 1.0:
+            raise ValueError(f"leak must be in (0, 1], got {self.leak}")
+        if self.spectral_radius <= 0.0:
+            raise ValueError(f"spectral_radius must be positive, got {self.spectral_radius}")
+        if self.vocab_size - N_ACTIONS < 2:
+            raise ValueError(
+                f"vocab_size must leave >=2 concentration levels, got {self.vocab_size}"
+            )
+
+
+@dataclass
+class _PlasticCache:
+    """Per-stream online-readout state threaded through :meth:`ReservoirPlastic.step`.
+
+    ``h`` is the frozen reservoir state (the bounded memory); ``W``/``b`` are the PLASTIC
+    readout — clones of the seed ``nn.Linear``, never ``nn.Parameter`` (so eval changes no
+    model weights); ``baseline`` is the leaky reward baseline. The remaining fields are the
+    one-step-late bookkeeping the next concentration-fold update consumes (the reward and the
+    world-model target are only observable one step after the action / prediction):
+
+    - ``h_conc``: ``h`` at the most recent CONC fold — the state the action was sampled from
+      (presynaptic activity for the policy Hebbian term).
+    - ``action_token``: the action token folded at the most recent ACTION fold.
+    - ``conc_pred_logits``: full-vocab logits at that ACTION fold — its ``conc_slice``
+      predicted the concentration now being revealed (the delta-rule target).
+    - ``h_action``: ``h`` at that ACTION fold — presynaptic activity for the delta-rule term.
+    """
+
+    h: torch.Tensor
+    W: torch.Tensor
+    b: torch.Tensor
+    baseline: float
+    h_conc: torch.Tensor | None
+    action_token: int | None
+    conc_pred_logits: torch.Tensor | None
+    h_action: torch.Tensor | None
+
+
+@register_model("reservoir_plastic")
+class ReservoirPlastic(LanguageModel):
+    """Frozen echo-state core + an ONLINE reward-modulated plastic readout (C.A.1b).
+
+    Reuses :class:`_ReservoirCore` unchanged. The readout is no longer distilled-and-frozen:
+    a working copy of ``(W, b)`` lives in :attr:`DecodeState.cache` and is adapted by a
+    gradient-free LOCAL rule inside :meth:`step`. ``evaluate_control`` is ``@torch.no_grad()``
+    so the update is plain tensor ops (no autograd). ~0 distillation — all learning is online.
+
+    Two local rules, both charged to ``step``'s ``backward`` (ADR 0004 — eval compute is the
+    product), fire only on a CONCENTRATION fold at ``pos>=2`` (when the reward AND the
+    world-model target are first observable):
+
+    - **world model** (``conc_slice`` columns): an online softmax **delta rule**, supervised
+      by the just-revealed concentration against the prediction made at the preceding
+      action-fold — ``W[conc] += lr_wm·(onehot(c) − softmax(pred)) ⊗ h_action``.
+    - **policy** (``action_slice`` columns): **reward-modulated Hebbian** with a leaky
+      baseline, reward proxy ``r = c/(levels−1)`` —
+      ``W[action] += lr_pol·(r − baseline)·onehot(a_taken) ⊗ h_conc``.
+
+    Gradient-free, local, context-independent (``O(d_res²)``/step). The seed ``nn.Linear``
+    readout (an ``nn.Parameter``, counted for memory parity) seeds the cache copy and also
+    drives a backprop distill path (``forward``/``train_step``) so the model still fits the
+    distillation harness — but the headline run trains 0 steps.
+    """
+
+    def __init__(self, config: ReservoirPlasticConfig):
+        super().__init__()
+        self.config = config
+        self.core = _ReservoirCore(
+            config.d_res, config.vocab_size, config.spectral_radius, config.seed
+        )
+        self.readout = nn.Linear(config.d_res, config.vocab_size)
+        # Deterministic seed readout from a stream distinct from the core's (so a fixed seed
+        # pins forward's output for the determinism test), mirroring ``Reservoir``.
+        gen = torch.Generator().manual_seed(config.seed + 1)
+        with torch.no_grad():
+            self.readout.weight.normal_(0.0, 0.02, generator=gen)
+            self.readout.bias.zero_()
+        self._levels = config.vocab_size - N_ACTIONS
+        self._conc = slice(0, self._levels)
+        self._action = slice(self._levels, config.vocab_size)
+
+    # --- distill path: forward + the default backprop train_step ----------------
+
+    def forward(self, idx: torch.Tensor) -> torch.Tensor:
+        states = self.core.run(idx, self.config.leak)  # (B,T,d_res), no grad through core
+        return self.readout(states)  # (B,T,vocab); backward flows only into the seed readout
+
+    def _per_token_forward(self) -> int:
+        """Per-step forward (predict): recurrence + plastic-readout matvec + the bias add —
+        identical to ``Reservoir``'s per-token forward."""
+        d, v = self.config.d_res, self.config.vocab_size
+        return self.core.recurrence_flops() + matmul_flops(1, v, d) + pointwise_flops(v)
+
+    def _readout_backward(self) -> int:
+        """Distill-path backward: the readout ``dW_out`` outer product + ``db_out`` (the
+        frozen core gets 0). Drives only the rarely-exercised distillation harness."""
+        v = self.config.vocab_size
+        return matmul_flops(1, v, self.config.d_res) + pointwise_flops(v)
+
+    def flops(self, seq_len: int) -> FlopBreakdown:
+        """The (mostly unused) distill path: forward = ``seq_len ×`` per-token forward;
+        backward = ``seq_len ×`` readout-only (NOT 2× forward — the frozen core gets 0)."""
+        return FlopBreakdown(
+            forward=seq_len * self._per_token_forward(),
+            backward=seq_len * self._readout_backward(),
+        )
+
+    def configure_optimizer(
+        self, *, lr: float, weight_decay: float, betas: tuple[float, float]
+    ) -> torch.optim.Optimizer:
+        """AdamW over the trainable seed readout only; the frozen core is excluded. (The
+        headline run does ~0 distillation, so this optimizer is rarely stepped.)"""
+        trainable = [p for p in self.parameters() if p.requires_grad]
+        return torch.optim.AdamW(trainable, lr=lr, betas=betas, weight_decay=weight_decay)
+
+    # --- online-update FLOP accounting (charged to step.backward) ---------------
+
+    def _wm_update_flops(self) -> int:
+        """World-model delta-rule cost on the ``conc_slice`` columns (levels × d_res)."""
+        d, lv = self.config.d_res, self._levels
+        return (
+            pointwise_flops(lv, per_elem=3)  # softmax(prev conc-pred logits) over levels
+            + pointwise_flops(lv, per_elem=2)  # onehot(c) target + (target − pred)
+            + matmul_flops(d, lv, 1)  # outer(err, h_action) : the delta-rule ΔW
+            + pointwise_flops(d * lv, per_elem=2)  # W[conc] += lr_wm·ΔW : scale + add
+            + pointwise_flops(lv, per_elem=2)  # b[conc] += lr_wm·err : scale + add
+        )
+
+    def _policy_update_flops(self) -> int:
+        """Reward-modulated Hebbian cost on the ``action_slice`` columns (N_ACTIONS × d_res)."""
+        d, na = self.config.d_res, N_ACTIONS
+        return (
+            pointwise_flops(5)  # r (1), adv = r-baseline (1), leaky baseline b+decay·(r-b) (3)
+            + pointwise_flops(na)  # onehot(a_taken)
+            + matmul_flops(d, na, 1)  # outer(onehot_a, h_conc) : the Hebbian ΔW
+            + pointwise_flops(d * na, per_elem=2)  # W[action] += lr_pol·adv·ΔW : scale + add
+            + pointwise_flops(na, per_elem=2)  # b[action] += lr_pol·adv·onehot_a : scale + add
+        )
+
+    def _online_update_flops(self) -> int:
+        """Total FLOPs of one online update (fires on a conc fold at ``pos>=2``)."""
+        return self._wm_update_flops() + self._policy_update_flops()
+
+    # --- prequential / online decode seam: h + the plastic (W,b) ARE the memory -
+
+    def init_prequential_state(self) -> DecodeState:
+        """Seed the cache: ``h_0 = 0`` and a fresh CLONE of the seed readout as the plastic
+        ``(W, b)`` (never an ``nn.Parameter``, so eval never mutates a model weight)."""
+        with torch.no_grad():
+            cache = _PlasticCache(
+                h=self.core.initial_state(),
+                W=self.readout.weight.detach().clone(),
+                b=self.readout.bias.detach().clone(),
+                baseline=0.0,
+                h_conc=None,
+                action_token=None,
+                conc_pred_logits=None,
+                h_action=None,
+            )
+        return DecodeState(cache=cache)
+
+    def step(
+        self, state: DecodeState, revealed_byte: int, pos: int
+    ) -> tuple[DecodeState, torch.Tensor, FlopBreakdown]:
+        """Fold one token, run the online update (on a conc fold at ``pos>=2``), read out.
+
+        Tape parity (from ``evaluate_control``): EVEN ``pos`` = concentration, ODD = action,
+        in order ``c0, a0, c1, a1, …``. The update is one step late by construction: the
+        reward (the concentration after the action) and the world-model target (the same
+        concentration) are only revealed at the NEXT conc fold. Forward is the recurrence +
+        readout; backward is the (nonzero) update cost on conc folds, 0 otherwise."""
+        cfg = self.config
+        c_in: _PlasticCache = state.cache
+        with torch.no_grad():
+            h_new = self.core.fold(c_in.h, revealed_byte, cfg.leak)
+            W, b, baseline = c_in.W, c_in.b, c_in.baseline
+            backward = 0
+            is_conc = pos % 2 == 0
+            ready = (
+                c_in.h_conc is not None
+                and c_in.action_token is not None
+                and c_in.conc_pred_logits is not None
+                and c_in.h_action is not None
+            )
+            if is_conc and pos >= 2 and ready:
+                W, b = W.clone(), b.clone()
+                lv = self._levels
+                # World-model delta rule on the conc columns: push the prediction made at the
+                # preceding action-fold toward the just-revealed concentration.
+                target = torch.zeros(lv, device=W.device, dtype=W.dtype)
+                target[revealed_byte] = 1.0
+                pred = torch.softmax(c_in.conc_pred_logits[self._conc], dim=-1)
+                err = target - pred
+                W[self._conc] += cfg.lr_wm * torch.outer(err, c_in.h_action)
+                b[self._conc] += cfg.lr_wm * err
+                # Reward-modulated Hebbian policy update on the action columns, with a leaky
+                # baseline; reward proxy = the observed concentration level.
+                r = revealed_byte / (lv - 1)
+                adv = r - baseline
+                baseline = baseline + cfg.reward_decay * (r - baseline)
+                oh_a = torch.zeros(N_ACTIONS, device=W.device, dtype=W.dtype)
+                oh_a[c_in.action_token - lv] = 1.0
+                W[self._action] += cfg.lr_pol * adv * torch.outer(oh_a, c_in.h_conc)
+                b[self._action] += cfg.lr_pol * adv * oh_a
+                backward = self._online_update_flops()
+
+            logits = (W @ h_new + b).detach()  # the plastic readout (uses the updated W,b)
+
+            if is_conc:
+                # This conc-fold's state is what the upcoming action will be sampled from.
+                new_cache = _PlasticCache(
+                    h=h_new,
+                    W=W,
+                    b=b,
+                    baseline=baseline,
+                    h_conc=h_new,
+                    action_token=c_in.action_token,
+                    conc_pred_logits=c_in.conc_pred_logits,
+                    h_action=c_in.h_action,
+                )
+            else:
+                # Action fold: stash the action, its conc prediction, and the action-fold state.
+                new_cache = _PlasticCache(
+                    h=h_new,
+                    W=W,
+                    b=b,
+                    baseline=baseline,
+                    h_conc=c_in.h_conc,
+                    action_token=revealed_byte,
+                    conc_pred_logits=logits,
+                    h_action=h_new,
+                )
+        flops = FlopBreakdown(forward=self._per_token_forward(), backward=backward)
+        return DecodeState(cache=new_cache, length=state.length + 1), logits, flops
+
+    def decode_step_flops(self, context_len: int) -> FlopBreakdown:
+        """Forward-only per-step predict cost: ``O(d_res²)``, independent of ``context_len``
+        (the online update is adaptation, reported in :meth:`step`'s ``backward``)."""
+        return FlopBreakdown(forward=self._per_token_forward(), backward=0)
+
+    @classmethod
+    def from_config(cls, config: dict[str, object]) -> "ReservoirPlastic":
+        return cls(ReservoirPlasticConfig(**config))
