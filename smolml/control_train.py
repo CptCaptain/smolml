@@ -12,7 +12,7 @@ import torch
 from smolml.control_eval import evaluate_control
 from smolml.device import get_device
 from smolml.envs.chemotaxis import ChemoConfig, chemo_env_spec
-from smolml.envs.spec import distill_seed, make_distillation_batch
+from smolml.envs.spec import EnvSpec, distill_seed, make_distillation_batch
 from smolml.models.registry import LanguageModel, build_model
 
 
@@ -36,6 +36,7 @@ class ControlTrainConfig:
     horizon: int = 64
     device: str | None = None
     run_name: str | None = None
+    env_name: str = "chemotaxis"
 
 
 @dataclass
@@ -58,14 +59,19 @@ class ControlRunSummary:
 
 
 def distill_train_run(
-    cfg: ControlTrainConfig, runs_dir: str | Path = "runs", *, return_model: bool = False
+    cfg: ControlTrainConfig,
+    runs_dir: str | Path = "runs",
+    *,
+    return_model: bool = False,
+    env_spec: EnvSpec | None = None,
 ) -> ControlRunSummary | tuple[ControlRunSummary, LanguageModel]:
     if cfg.flop_budget <= 0:
         raise ValueError(f"flop_budget must be positive, got {cfg.flop_budget}")
     torch.manual_seed(cfg.seed)
     device = get_device(cfg.device)
-    chem = ChemoConfig(width=cfg.width, levels=cfg.levels, sigma=cfg.sigma, horizon=cfg.horizon)
-    env_spec = chemo_env_spec(chem)
+    if env_spec is None:
+        chem = ChemoConfig(width=cfg.width, levels=cfg.levels, sigma=cfg.sigma, horizon=cfg.horizon)
+        env_spec = chemo_env_spec(chem)
     mc = dict(cfg.model_config)
     mc["vocab_size"] = env_spec.tape_spec.vocab_size
     need = 2 * cfg.horizon + 1
@@ -97,6 +103,7 @@ def distill_train_run(
                 {
                     "type": "meta",
                     "protocol": "control",
+                    "env": cfg.env_name,
                     "run": run_name,
                     "model": cfg.model,
                     "config": resolved,
