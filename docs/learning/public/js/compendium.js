@@ -39,7 +39,7 @@
   function showCh(c) { return c === " " ? "\u2423" : c; }
 
   // ══ BpbFlopChart ═════════════════════════════════════════════════════════
-  var ROLE_COLOR = { reference: "#5ea8e6", fast_weight: "#f0913e", transformer: "#5cc46a", free: "#cf8be0", pc_refine: "#e0738a", warm: "#e0654d", neutral: "#9a8e76" };
+  var ROLE_COLOR = { reference: "#5ea8e6", fast_weight: "#f0913e", transformer: "#5cc46a", free: "#cf8be0", pc_refine: "#e0738a", warm: "#e0654d", reservoir: "#8f86d6", reservoir_plastic: "#b3a4e8", chemotaxis: "#3aa890", neutral: "#9a8e76" };
   var VB_W = 780, VB_H = 480, M = { top: 30, right: 26, bottom: 58, left: 66 };
   var PX0 = M.left, PX1 = VB_W - M.right, PY0 = M.top, PY1 = VB_H - M.bottom;
 
@@ -48,6 +48,7 @@
     var series = data.series || [];
     var budgetLine = data.budgetLine, budgetLabel = data.budgetLabel || "equal-FLOP budget";
     var noModelLine = !!data.noModelLine, annotations = data.annotations || [];
+    var metric = data.metric || {}, yKey = metric.yKey || "bpb", tipLabel = metric.tipLabel || "bpb", valDec = metric.valDecimals != null ? metric.valDecimals : 4;
     var hidden = {};
     var marks = {}; // "sid|i" -> info
     var sc = null; // current scales
@@ -56,7 +57,7 @@
 
     function layout() {
       var vis = visible(), xs = [], ys = [];
-      vis.forEach(function (s) { s.points.forEach(function (p) { xs.push(p.flops); ys.push(p.bpb); }); });
+      vis.forEach(function (s) { s.points.forEach(function (p) { xs.push(p.flops); ys.push(p[yKey]); }); });
       if (budgetLine) xs.push(budgetLine);
       if (noModelLine) ys.push(8);
       if (!xs.length) { xs = [1e6, 1e10]; ys = [4, 8]; }
@@ -68,9 +69,10 @@
       var xScale = function (f) { return PX0 + ((Math.log10(f) - lx0) / (lx1 - lx0)) * (PX1 - PX0); };
       var yScale = function (b) { return PY1 - ((b - ylo) / (yhi - ylo)) * (PY1 - PY0); };
       var xTicks = []; for (var k = Math.ceil(lx0); k <= Math.floor(lx1); k++) xTicks.push(k);
-      var step = (yhi - ylo) / 6 > 0.75 ? 1 : 0.5;
-      var yDecimals = step < 1 ? 1 : 0;
-      var yTicks = []; for (var v = Math.ceil(ylo / step) * step; v <= yhi + 1e-9; v += step) yTicks.push(Math.round(v * 10) / 10);
+      var step, yDecimals;
+      if (metric.yTickStep) { step = metric.yTickStep; yDecimals = metric.yDecimals != null ? metric.yDecimals : 1; }
+      else { step = (yhi - ylo) / 6 > 0.75 ? 1 : 0.5; yDecimals = step < 1 ? 1 : 0; }
+      var yTicks = []; for (var v = Math.ceil(ylo / step) * step; v <= yhi + 1e-9; v += step) yTicks.push(Math.round(v / step) * step);
       if (yTicks.length === 0) { // tight range: the 0.5/1.0 grid is too coarse — pick a 1-2-5 nice step
         var raw = (yhi - ylo) / 4, p10 = Math.pow(10, Math.floor(Math.log10(raw))), cands = [1, 2, 2.5, 5, 10];
         step = 10 * p10;
@@ -84,7 +86,7 @@
     function svgString() {
       sc = layout(); marks = {};
       var L = sc, s = "";
-      s += '<svg viewBox="0 0 ' + VB_W + ' ' + VB_H + '" role="img" aria-label="Bits-per-byte versus total FLOPs; lower-left is better." class="chart-svg">';
+      s += '<svg viewBox="0 0 ' + VB_W + ' ' + VB_H + '" role="img" aria-label="' + (metric.aria || "Bits-per-byte versus total FLOPs; lower-left is better.") + '" class="chart-svg">';
       L.xTicks.forEach(function (k) { var x = L.xScale(Math.pow(10, k)); s += '<line x1="' + x + '" x2="' + x + '" y1="' + PY0 + '" y2="' + PY1 + '" class="grid"/>'; });
       L.yTicks.forEach(function (v) { var y = L.yScale(v); s += '<line x1="' + PX0 + '" x2="' + PX1 + '" y1="' + y + '" y2="' + y + '" class="grid"/>'; });
       s += '<line x1="' + PX0 + '" x2="' + PX1 + '" y1="' + PY1 + '" y2="' + PY1 + '" class="axis"/>';
@@ -92,7 +94,7 @@
       L.xTicks.forEach(function (k) { s += '<text x="' + L.xScale(Math.pow(10, k)) + '" y="' + (PY1 + 20) + '" class="tick" text-anchor="middle">10' + sup(k) + "</text>"; });
       s += '<text x="' + ((PX0 + PX1) / 2) + '" y="' + (VB_H - 10) + '" class="axis-label" text-anchor="middle">total FLOPs (log scale) \u2192</text>';
       L.yTicks.forEach(function (v) { s += '<text x="' + (PX0 - 10) + '" y="' + (L.yScale(v) + 4) + '" class="tick" text-anchor="end">' + v.toFixed(L.yDecimals) + "</text>"; });
-      s += '<text class="axis-label" text-anchor="middle" transform="translate(16 ' + ((PY0 + PY1) / 2) + ') rotate(-90)">\u2190 validation bits-per-byte</text>';
+      s += '<text class="axis-label" text-anchor="middle" transform="translate(16 ' + ((PY0 + PY1) / 2) + ') rotate(-90)">' + (metric.yLabel || "\u2190 validation bits-per-byte") + '</text>';
       if (noModelLine && L.yhi >= 7.9) {
         s += '<line x1="' + PX0 + '" x2="' + PX1 + '" y1="' + L.yScale(8) + '" y2="' + L.yScale(8) + '" class="ref-line"/>';
         s += '<text x="' + (PX1 - 6) + '" y="' + (L.yScale(8) - 6) + '" class="ref-text" text-anchor="end">8.0 bpb \u2014 uniform \u201cno model\u201d</text>';
@@ -106,14 +108,14 @@
         var color = ROLE_COLOR[sr.role] || ROLE_COLOR.neutral;
         var pts = sr.points.slice().sort(function (a, b) { return a.flops - b.flops; });
         if (sr.kind === "curve" && pts.length > 1) {
-          var path = pts.map(function (p) { return L.xScale(p.flops) + "," + L.yScale(p.bpb); }).join(" ");
+          var path = pts.map(function (p) { return L.xScale(p.flops) + "," + L.yScale(p[yKey]); }).join(" ");
           s += '<polyline points="' + path + '" fill="none" stroke="' + color + '" stroke-width="2"' + (sr.dashed ? ' stroke-dasharray="7 5"' : "") + ' stroke-linejoin="round"/>';
         }
         pts.forEach(function (p, i) {
-          var px = L.xScale(p.flops), py = L.yScale(p.bpb), r = sr.kind === "point" ? 8 : 5;
+          var px = L.xScale(p.flops), py = L.yScale(p[yKey]), r = sr.kind === "point" ? 8 : 5;
           var key = sr.id + "|" + i;
-          marks[key] = { px: px, py: py, role: sr.role, label: sr.label, bpb: p.bpb, flops: p.flops, tag: p.tag };
-          var aria = sr.label + ": " + p.bpb.toFixed(4) + " bpb at " + p.flops.toExponential(2) + " FLOPs" + (p.tag ? " \u2014 " + p.tag : "");
+          marks[key] = { px: px, py: py, role: sr.role, label: sr.label, val: p[yKey], flops: p.flops, tag: p.tag };
+          var aria = sr.label + ": " + p[yKey].toFixed(valDec) + " " + tipLabel + " at " + p.flops.toExponential(2) + " FLOPs" + (p.tag ? " \u2014 " + p.tag : "");
           s += '<g class="chart-mark" tabindex="0" role="button" data-key="' + key + '" aria-label="' + aria.replace(/"/g, "&quot;") + '">';
           s += '<circle cx="' + px + '" cy="' + py + '" r="16" fill="transparent"/>';
           if (sr.kind === "point") {
@@ -125,7 +127,7 @@
         });
       });
       annotations.forEach(function (a) {
-        var ax = sc.xScale(a.flops), ay = sc.yScale(a.bpb), dx = a.dx == null ? 14 : a.dx, dy = a.dy == null ? -16 : a.dy;
+        var ax = sc.xScale(a.flops), ay = sc.yScale(a[yKey] != null ? a[yKey] : a.bpb), dx = a.dx == null ? 14 : a.dx, dy = a.dy == null ? -16 : a.dy;
         var tx = ax + dx, ty = ay + dy;
         s += '<line x1="' + ax + '" y1="' + ay + '" x2="' + tx + '" y2="' + ty + '" class="anno-leader"/>';
         s += '<text x="' + tx + '" y="' + ty + '" class="anno-text" text-anchor="' + (dx < 0 ? "end" : "start") + '">' + a.text + "</text>";
@@ -152,7 +154,7 @@
     function showTip(key) {
       var info = marks[key]; if (!info) return;
       var tip = root.querySelector(".chart-tip"); if (!tip) return;
-      var lines = [info.label, "bpb " + info.bpb.toFixed(4), info.flops.toExponential(2) + " FLOPs"];
+      var lines = [info.label, tipLabel + " " + info.val.toFixed(valDec), info.flops.toExponential(2) + " FLOPs"];
       if (info.tag) lines.push(info.tag);
       var w = 168, h = 16 + lines.length * 15, px = info.px, py = info.py;
       var bx = px + 14; if (bx + w > VB_W) bx = px - w - 14;

@@ -2,7 +2,7 @@
 // The index concept map: a hand-laid top-down DAG of the compendium, with
 // clickable nodes. Replaces the source mermaid graph with a styled, on-brand
 // SVG so the landing page is the navigational spine (no orphan pages).
-type Role = "accent" | "reference" | "fast_weight" | "transformer" | "pc" | "warm";
+type Role = "accent" | "reference" | "fast_weight" | "transformer" | "pc" | "warm" | "reservoir" | "chemotaxis";
 interface Node {
   id: string;
   x: number;
@@ -53,23 +53,26 @@ const edges: Edge[] = [
   { from: "preq", to: "ctrl" },
   { from: "lpf", to: "ctrl" },
   { from: "warm", to: "fwm" },
+  { from: "ctrl", to: "exp", dashed: true },
 ];
 
 // Experiment leaves: each individual experiment page, hung off the log node on a
 // connector "bus" so every experiment is reachable from the map too (no orphans).
-const LEAF_W = 100;
+const LEAF_W = 78;
 const LEAF_Y = 602;
 const BUS_Y = 564;
 const expLeaves: Node[] = [
-  { id: "e01", x: 62, y: LEAF_Y, w: LEAF_W, label: "0.1 baseline", href: "/experiments/0.1-baseline-harness-smoke" },
-  { id: "e02", x: 164, y: LEAF_Y, w: LEAF_W, label: "0.2 prequential", href: "/experiments/0.2-prequential-baseline" },
-  { id: "eref", x: 266, y: LEAF_Y, w: LEAF_W, label: "0.3 cmix ref", role: "reference", href: "/experiments/context-mixing-reference" },
-  { id: "ea1", x: 368, y: LEAF_Y, w: LEAF_W, label: "A.1 fast-weight", role: "fast_weight", href: "/experiments/A.1-fast-weight-memory" },
-  { id: "eb1", x: 470, y: LEAF_Y, w: LEAF_W, label: "B.1 PC refine", role: "pc", href: "/experiments/B.1-surprise-gated-pc-refinement" },
-  { id: "eb2", x: 572, y: LEAF_Y, w: LEAF_W, label: "B.2 warm mix", role: "warm", href: "/experiments/B.2-warmed-mixing" },
-  { id: "eb3", x: 674, y: LEAF_Y, w: LEAF_W, label: "B.3 hashed mix", role: "warm", href: "/experiments/B.3-hashed-mix-full-corpus" },
-  { id: "eb4", x: 776, y: LEAF_Y, w: LEAF_W, label: "B.4 delta mix", role: "fast_weight", href: "/experiments/B.4-delta-mix" },
-  { id: "eff", x: 878, y: LEAF_Y, w: LEAF_W, label: "first finding", role: "accent", href: "/experiments/first-finding-pareto" },
+  { id: "e01", x: 60, y: LEAF_Y, w: LEAF_W, label: "0.1 base", href: "/experiments/0.1-baseline-harness-smoke" },
+  { id: "e02", x: 142, y: LEAF_Y, w: LEAF_W, label: "0.2 preq", href: "/experiments/0.2-prequential-baseline" },
+  { id: "eref", x: 224, y: LEAF_Y, w: LEAF_W, label: "0.3 ref", role: "reference", href: "/experiments/context-mixing-reference" },
+  { id: "ea1", x: 306, y: LEAF_Y, w: LEAF_W, label: "A.1 fast-wt", role: "fast_weight", href: "/experiments/A.1-fast-weight-memory" },
+  { id: "eb1", x: 388, y: LEAF_Y, w: LEAF_W, label: "B.1 PC", role: "pc", href: "/experiments/B.1-surprise-gated-pc-refinement" },
+  { id: "eb2", x: 470, y: LEAF_Y, w: LEAF_W, label: "B.2 warm", role: "warm", href: "/experiments/B.2-warmed-mixing" },
+  { id: "eb3", x: 552, y: LEAF_Y, w: LEAF_W, label: "B.3 hashed", role: "warm", href: "/experiments/B.3-hashed-mix-full-corpus" },
+  { id: "eb4", x: 634, y: LEAF_Y, w: LEAF_W, label: "B.4 delta", role: "fast_weight", href: "/experiments/B.4-delta-mix" },
+  { id: "ec1", x: 716, y: LEAF_Y, w: LEAF_W, label: "C.A.1 resv", role: "reservoir", href: "/experiments/C.A.1-reservoir-control" },
+  { id: "ec2", x: 798, y: LEAF_Y, w: LEAF_W, label: "C.A.2 chemo", role: "chemotaxis", href: "/experiments/C.A.2-chemotaxis-min-control" },
+  { id: "eff", x: 880, y: LEAF_Y, w: LEAF_W, label: "first find", role: "accent", href: "/experiments/first-finding-pareto" },
 ];
 
 function endpoints(a: Node, b: Node) {
@@ -204,6 +207,12 @@ function edgePath(a: Node, b: Node) {
   }
   .role-warm rect {
     stroke: var(--c-warm);
+  }
+  .role-reservoir rect {
+    stroke: var(--c-reservoir);
+  }
+  .role-chemotaxis rect {
+    stroke: var(--c-chemo);
   }
   .role-accent rect {
     stroke: var(--accent);

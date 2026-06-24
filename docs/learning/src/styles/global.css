@@ -41,6 +41,10 @@
   --c-free: #cf8be0;
   --c-pc: #e0738a;
   --c-warm: #e0654d;
+  /* control-rung candidates (C.A): reservoir family = indigo (two shades), chemotaxis = teal */
+  --c-reservoir: #8f86d6;
+  --c-plastic: #b3a4e8;
+  --c-chemo: #3aa890;
   --c-neutral: #9a8e76;
 
   /* type */
@@ -329,6 +333,15 @@ blockquote {
 }
 .swatch.warm {
   background: var(--c-warm);
+}
+.swatch.reservoir {
+  background: var(--c-reservoir);
+}
+.swatch.reservoir_plastic {
+  background: var(--c-plastic);
+}
+.swatch.chemotaxis {
+  background: var(--c-chemo);
 }
 
 /* responsive */
@@ -630,4 +643,7 @@ blockquote {
 .genbar-fill { display: flex; align-items: center; justify-content: flex-end; height: 100%; padding-right: 0.55rem; font-family: var(--font-mono); font-size: 0.82rem; font-weight: 600; color: #16130e; white-space: nowrap; }
 .genbar-fill.delta { background: var(--c-fast); }
 .genbar-fill.abstain { background: var(--c-neutral); }
+.genbar-fill.neutral { background: var(--c-neutral); }
+.genbar-fill.reservoir_plastic { background: var(--c-plastic); }
+.genbar-fill.chemotaxis { background: var(--c-chemo); }
 @media (max-width: 640px) { .genbar-row { grid-template-columns: 8.5rem 1fr; } }

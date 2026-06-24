@@ -15,13 +15,18 @@ export type SeriesRole =
   | "free" // the free online unigram floor
   | "pc_refine" // surprise-gated predictive-coding refinement (B.1, matplotlib tab:orange; site rose so it never reads as fast-weight)
   | "warm" // warm_mix: warmed online context-mixer (B.2; harness tab:orange, site vermilion --c-warm so it never reads as fast-weight)
+  | "reservoir" // C.A.1 echo-state reservoir + distilled-frozen readout (control rung; periwinkle --c-reservoir)
+  | "reservoir_plastic" // C.A.1b reservoir + online plastic readout (control rung; lavender --c-plastic, same family)
+  | "chemotaxis" // C.A.2 chemotaxis_min — 5 hand-coded run-and-tumble scalars (control rung; teal --c-chemo)
   | "neutral";
 
 export interface CurvePoint {
   /** total FLOPs (x). */
   flops: number;
-  /** validation bits-per-byte (y). */
-  bpb: number;
+  /** validation bits-per-byte (y) — present on the bpb charts. */
+  bpb?: number;
+  /** regret vs the μ-seeing oracle (y) — present on the control regret charts. */
+  regret?: number;
   /** short marker annotation, e.g. "order 0..3" or "4×10¹⁰". */
   tag?: string;
 }
@@ -416,3 +421,75 @@ export const deltaFull: Series[] = [
     points: [{ flops: 4.74e10, bpb: 2.6224, tag: "the cheap ladder" }],
   },
 ];
+
+// ── C.A: in-context control candidates on the chemotaxis rung ─────────────────
+// Source: the researcher findings note (control-candidates-findings.md). Every
+// number was reproduced by the researcher and the FLOP accounting was cross-vendor
+// (codex) audited. The headline metric is REGRET vs the μ-seeing oracle per TOTAL
+// FLOP at fixed params (lower-left wins) — so these series carry `regret`, not bpb,
+// and the `RegretFlopChart` marker tells the shared chart routine to read `regret`.
+// The transformer bar is the same 148,608-param baseline the in-context-control
+// concept page tabulates (regret 0.229/0.171/0.141 at 2.97e11/1.19e12/2.96e12).
+// Three candidates:
+//   reservoir         (C.A.1)  — fixed echo-state core + distilled-frozen linear
+//                                 readout; LOSES (caps above the bar). Periwinkle.
+//   reservoir_plastic (C.A.1b) — same frozen core + an ONLINE reward-modulated
+//                                 plastic readout (~0 distillation); clears the
+//                                 random floor with genuine online learning but
+//                                 LOSES on regret. Lighter lavender (same family).
+//   chemotaxis_min    (C.A.2)  — 5 hand-coded run-and-tumble scalars; BEATS the bar
+//                                 on the FLOP axis (~6 OOM cheaper, lower regret) —
+//                                 but a FLOP-FLOOR win on a stationary rung (page
+//                                 caveat). Teal.
+// Only the 0-distillation chemotaxis_min point has a reported FLOP coordinate; the
+// 100/400-step regrets (0.191/0.251) have NO reported FLOPs, so they are NOT plotted
+// (no invented coordinate) — they live in the page's mini-table.
+const controlBar: Series = {
+  id: "transformer_bar",
+  label: "transformer bar (148,608 params)",
+  role: "transformer",
+  kind: "curve",
+  dashed: true,
+  points: [
+    { flops: 2.97e11, regret: 0.229, tag: "150 distill steps — reward 0.704" },
+    { flops: 1.19e12, regret: 0.171, tag: "600 distill steps — reward 0.762" },
+    { flops: 2.96e12, regret: 0.141, tag: "1500 distill steps — reward 0.792" },
+  ],
+};
+const reservoirCurve: Series = {
+  id: "reservoir",
+  label: "reservoir — frozen readout (C.A.1)",
+  role: "reservoir",
+  kind: "curve",
+  dashed: true,
+  points: [
+    { flops: 9.29e10, regret: 0.494, tag: "150 steps — reward 0.439, wm 1.59" },
+    { flops: 3.68e11, regret: 0.371, tag: "600 steps — reward 0.562, wm 1.38" },
+    { flops: 9.18e11, regret: 0.278, tag: "1500 steps — reward 0.655, wm 1.29" },
+  ],
+};
+const reservoirPlasticPoint: Series = {
+  id: "reservoir_plastic",
+  label: "reservoir + plastic readout (C.A.1b)",
+  role: "reservoir_plastic",
+  kind: "point",
+  points: [
+    { flops: 1.22e9, regret: 0.501, tag: "~0 distillation — online plastic readout" },
+  ],
+};
+const chemotaxisPoint: Series = {
+  id: "chemotaxis_min",
+  label: "chemotaxis_min — 5 params (C.A.2)",
+  role: "chemotaxis",
+  kind: "point",
+  points: [
+    { flops: 2.70e5, regret: 0.180, tag: "~0 distillation — the rung's cheap optimum" },
+  ],
+};
+
+// Full cross-candidate landscape — the in-context-control concept headline.
+export const controlCandidates: Series[] = [controlBar, reservoirCurve, reservoirPlasticPoint, chemotaxisPoint];
+// Reservoir-family experiment page: the bar + both reservoir variants (both lose on regret).
+export const reservoirControl: Series[] = [controlBar, reservoirCurve, reservoirPlasticPoint];
+// chemotaxis_min experiment page: the bar vs the FLOP-floor winner.
+export const chemotaxisControl: Series[] = [controlBar, chemotaxisPoint];

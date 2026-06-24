@@ -45,7 +45,7 @@ Only the chart takes data; the rest are self-contained.
 
 | widget (`data-widget`) | purpose | data passed |
 | --- | --- | --- |
-| `chart` (`BpbFlopChart.astro`) | **The recurring viz.** bpb (y, linear) vs total FLOPs (x, log10). Hover/keyboard-focus points (tooltip in place, focus preserved), toggle series, optional budget/no-model lines + annotations. Role colors match the matplotlib plots. | JSON: `series`, `budgetLine?`, `budgetLabel?`, `noModelLine?`, `annotations?`, `yMin?`, `yMax?` |
+| `chart` (`BpbFlopChart.astro`, `RegretFlopChart.astro`) | **The recurring viz.** A y-metric vs total FLOPs (x, log10) scatter; lower-left = better. Hover/keyboard-focus points (tooltip in place, focus preserved), toggle series, optional budget/no-model lines + annotations. y defaults to **bpb** (linear); an optional `metric` config (`yKey`/`yLabel`/`tipLabel`/`valDecimals`/`yTickStep`/`aria`) repoints it — `RegretFlopChart` uses it for **regret** (C.A control rung). Role colors match the matplotlib plots. | JSON: `series`, `annotations?`, `yMin?`, `yMax?`, `budgetLine?`, `budgetLabel?`, `noModelLine?`, `metric?` |
 | `prequential` (`PrequentialStream.astro`) | Live online order-0/1 byte model; predict-before-reveal, pays −log₂p, adapts. Shares the stream scaffold (tape/readout/sparkline/transport) inside `compendium.js`. | _(none)_ |
 | `contextmixing` (`ContextMixingDemo.astro`) | Order-0/1/2 specialists + online logistic mixing weights (SGD); shares the stream scaffold. | _(none)_ |
 | `codelength` (`CodeLengthDemo.astro`) | Slider for p(true byte) → −log₂p bits, cost curve + 8-bit "no model" line. | _(none)_ |
@@ -55,7 +55,7 @@ Only the chart takes data; the rest are self-contained.
 | `controlrollout` (`ControlRollout.astro`) | **In-context control / chemotaxis rung.** Scrubbable instrument over one trained held-out `ChemoEnv` rollout: regret/reward scoreboard, an unrolled W-cell field bar (concentration heat + hidden-peak ▼ / agent ▲ markers), a spacetime raster (time ↓) tracing the agent path (green) chasing the peak path (blue dashed, wrap-broken at the ring seam), and a cumulative-reward spark vs perfect/random reference lines. Step/Play/Reset/scrub; built once then mutated in place (the 33×16 raster never re-renders). | inline JSON: the full `icl_control_rollout.json` (read from `public/` at build time by the marker) |
 
 The shared **stream scaffold** and **chart** logic live as functions in `compendium.js` (rule of
-two: one chart routine for 8 chart instances; one stream scaffold for both stream demos).
+two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 3 regret (`RegretFlopChart`); one stream scaffold for both stream demos).
 
 ### Presentational (`.astro`)
 
@@ -66,12 +66,16 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 | `Pipeline` | Left-to-right flow of labeled stages + arrows, optional dashed feedback leg (online loops). | `steps: {label,sub?,accent?}[]`, `feedback?` |
 | `ConceptMap` | The landing's hand-laid SVG DAG; clickable nodes link every page (the navigational spine). Edges are smooth cubic-Bézier `<path>`s (orientation-aware control points, Δ=0.4·span) with arrowheads; the experiment "bus" stays orthogonal. | _(none; static data)_ |
 | `CardGrid` | Responsive card grid over `NavItem[]` (landing + experiments index). | `items: NavItem[]` |
+| `HBars` | Horizontal labeled value bars: a row per bar, fill width ∝ a precomputed `pct`, value printed in the fill, colored by an `accent` class (`.genbar-fill.<accent>` in `global.css`). Caller sets the scale + says (in the caption) whether longer = better. Used by B.4 (delta-vs-abstain bpb, lower=shorter) + the C.A within-episode reward bars (higher=longer). | `bars: {label,pct,text,accent}[]` |
 
 ### Data modules
 
-- `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`, `warm`) + datasets `firstFinding`,
-  `contextMixingReference`, `prequentialBaseline`, `amortizedBaseline`, `freeUnigram`,
-  `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2), `hashedMixFull` (B.3), constants. Provenance-commented.
+- `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`, `warm`, and the control roles
+  `reservoir` / `reservoir_plastic` / `chemotaxis`; `CurvePoint` carries optional `bpb?` **or**
+  `regret?`) + datasets `firstFinding`, `contextMixingReference`, `prequentialBaseline`,
+  `amortizedBaseline`, `freeUnigram`, `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2),
+  `hashedMixFull` (B.3), `deltaMix` + `deltaFull` (B.4), and `controlCandidates` / `reservoirControl`
+  / `chemotaxisControl` (C.A, regret-vs-FLOP), constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
 - `public/icl_control_rollout.json` — a sample **trained, held-out** `ChemoEnv` rollout the harness
   writes (fields: `width, levels, horizon, mu[], pos[], conc_token[], reward[], action[], field[][],
@@ -93,12 +97,22 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
   so it earned its own vermilion token; its cold point renders in the `reference` blue, drawn over
   the warm curve's cold start, so "cold == the context-mixing reference" reads visually).
   This keeps the interactive re-renders visually honest against the embedded PNGs.
+  Control-rung candidates (C.A) extend the same precedent: reservoir family = **indigo**
+  (`--c-reservoir` #8f86d6, frozen C.A.1) with a lighter **lavender** sibling (`--c-plastic` #b3a4e8,
+  online-plastic C.A.1b — same hue = same family), and chemotaxis_min = **teal** (`--c-chemo` #3aa890).
+  All three are otherwise-unused hues (no collision with blue/orange/green/violet/rose/vermilion/amber),
+  flat semantic mark colors (no gradient/glow — not the cyan-on-dark slop pattern), and light enough to
+  host dark bar-fill text. They appear on the **regret** charts only (no bpb-axis collision) and as
+  `ConceptMap` leaf borders + `.swatch`es.
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses), `Pipeline` (8), `CardGrid` (2),
-  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 12 chart instances and
-  one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
+- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses) + `RegretFlopChart` (3 uses) are two
+  thin markers over **one** `mountChart` routine (parametrized by an optional `metric` config; absent ⇒
+  the bpb defaults, so all 13 bpb charts are byte-unchanged). `HBars` (2 uses — factored from B.4's inline
+  `.genbars` two-bar, first use refactored, + the C.A reward bars), `Pipeline` (8), `CardGrid` (2),
+  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 16 chart instances and one
+  stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
   - Wrap page body in `<Layout …>` via `import` + element, **not** the `layout:` frontmatter
     (frontmatter passes props under `frontmatter.*`, but `Layout` reads top-level props).
@@ -128,11 +142,13 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 - **Concepts (9):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
   prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
   predictive-coding, online-warmup, in-context-control.
-- **Experiments (9 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
+- **Experiments (11 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
   context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
-  B.2-warmed-mixing, B.3-hashed-mix-full-corpus, B.4-delta-mix, first-finding-pareto. Each renders the shared interactive `BpbFlopChart`
-  (one plot per page; B.2 is the lone two-plot page — Phase 1 + Phase 2 are distinct experiments;
-  harness PNGs stay as artifacts under `experiments/`, not embedded — session 6).
+  B.2-warmed-mixing, B.3-hashed-mix-full-corpus, B.4-delta-mix, C.A.1-reservoir-control,
+  C.A.2-chemotaxis-min-control, first-finding-pareto. The bpb pages render the shared interactive
+  `BpbFlopChart`; the two C.A control pages render `RegretFlopChart` (same routine, regret on y).
+  (One plot per page; B.2 is the lone two-plot page — Phase 1 + Phase 2 are distinct experiments;
+  harness PNGs stay as artifacts under `experiments/`, not embedded — session 6.)
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
 
 ## Flagged for researchers (RESOLVED 2026-06-19 by Main)
@@ -152,6 +168,12 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
    unified run used the 512 B clone tail at the harness default order (4.7779 bpb @ 4.283×10⁶) —
    different stream length *and* max-order, so the ~equal total FLOPs is coincidental. Each page is
    faithful; a clarifying caveat was added to the context-mixing-reference page.
+
+**New (2026-06-23, C.A control candidates) — minor, flagged not fixed:** the findings note states the
+transformer "can push regret to 0.141 only by spending 2.96×10¹² FLOPs (**16 OOM more**)", but
+2.96×10¹² ÷ 2.70×10⁵ ≈ 1.1×10⁷, i.e. **~7 OOM**, not 16 (the cheapest-point gap is ~6 OOM, also stated and
+correct). The C.A.2 page uses the arithmetically-correct **~7 OOM**; the "16 OOM" wording was flagged to
+Main rather than reproduced. No other numbers touched.
 
 ## Changelog
 
@@ -345,3 +367,57 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
     right role classes), 25 KaTeX spans, no `\u` leaks, and the landing map shows the `B.4 delta mix` leaf,
     the new `warm`→`fwm` edge, A.1 + B.4 both orange (the lineage), with all three B.4 links resolving.
     Researcher note found internally consistent — no science flagged.
+- **2026-06-23 (session 12 — C.A in-context-control candidates):** authored two experiment pages from the
+  researcher findings note and extended the `in-context-control` concept. **`C.A.1-reservoir-control`** —
+  the reservoir family as honest negatives: C.A.1 (frozen echo-state core + distilled linear readout, 0
+  backward; regret 0.494→0.371→0.278 over 150/600/1500 steps, **caps above the bar's 0.229**) and C.A.1b
+  (same core + an online reward-modulated **plastic** readout at ~0 distillation; clears the random floor
+  with genuine Source-(iv) dynamics — within-episode 0.460&gt;0.404, ~243× cheaper than the bar — but regret
+  0.501, ~2.2× the bar). **`C.A.2-chemotaxis-min-control`** — the lone winner: 5 hand-coded run-and-tumble
+  scalars, **0.180 regret @ 2.70×10⁵ FLOPs**, lower than the bar at ~6 OOM fewer FLOPs — framed
+  *prominently* as a **FLOP-floor** win on a **stationary** rung (the documented C.A.0 limitation), not a
+  general result; includes the counter-intuitive "distillation raises regret" mini-table
+  (0.180→0.191→0.251) and the within-episode climb-then-track reward bars (0.844&gt;0.662). Extended the
+  concept with a "**the candidates**" section: the cross-candidate **regret-vs-FLOP landscape** chart + an
+  "only the floor beats the bar" `insight`, and updated the closing stationarity caveat to link C.A.2.
+  - **New shared component `RegretFlopChart` (the control analog of `BpbFlopChart`).** Rather than
+    duplicate the ~140-line chart routine, I **generalized `mountChart`** with an optional `metric` config
+    (`yKey`/`yLabel`/`tipLabel`/`valDecimals`/`yTickStep`/`aria`); absent ⇒ exact bpb behaviour, so all 13
+    bpb charts are byte-unchanged (verified: y-tick sets identical). `RegretFlopChart` is a thin marker
+    that sets `metric` to plot `regret` (0.1 tick step). `CurvePoint` gained optional `bpb?`/`regret?`.
+    3 uses (concept + C.A.1 + C.A.2); `mountChart` now serves **16** instances.
+  - **New shared component `HBars`** (rule of two): factored B.4's inline `.genbars` two-bar into a
+    parameterized `bars: {label,pct,text,accent}[]` component and **refactored B.4's first use** onto it
+    (DOM/classes/widths byte-identical — coordinated with `DocsBuilderB4`, who held B.4 byte-stable;
+    verified `>3.73 bpb</span>` unchanged). Reused for the C.A within-episode reward bars.
+  - **3 new semantic data roles + tokens** (same precedent as `pc_refine`/`warm`): `reservoir` indigo
+    (`--c-reservoir` #8f86d6), `reservoir_plastic` lavender (`--c-plastic` #b3a4e8, same-hue sibling =
+    "reservoir family"), `chemotaxis` teal (`--c-chemo` #3aa890). Added across `curves.ts` `SeriesRole`,
+    `compendium.js` `ROLE_COLOR`, `global.css` (`.swatch.*` + `.genbar-fill.{neutral,reservoir_plastic,
+    chemotaxis}`), and `ConceptMap` (`role-reservoir`/`role-chemotaxis` borders).
+  - **Wiring:** `nav.ts` (EXP C.A.1, C.A.2 between B.4 and first-finding), experiments index (auto via
+    nav), `ConceptMap` (re-spaced the bus **9→11 leaves** at `LEAF_W=78`, shortened labels to fit; new
+    `reservoir`/`chemotaxis` leaf borders + a new dashed **`ctrl → exp`** edge so the control rung's
+    experiments are logged like every other concept's), reciprocal See-also/related on `in-context-control`
+    ↔ both pages and C.A.1 ↔ C.A.2.
+  - **Honesty:** used ONLY the findings' numbers; the chemotaxis 100/400-step regrets (no reported FLOPs)
+    live in a mini-table, **not** plotted (no invented coordinate). Flagged a minor arithmetic slip in the
+    findings ("16 OOM" should be ~7) to Main; did not reproduce it.
+  - Build green (**22 pages**); verified from `file://` (zero console errors): all three regret charts
+    mount (8/7/4 marks, correct teal/indigo/lavender/green fills, regret y-axis + 0.1 ticks, legends,
+    separated annotations), reward bars render clean (no stray whitespace), KaTeX renders (476/447/437
+    spans), no `\u` leaks, the map shows 11 non-overlapping leaves (min gap 4px) + the `ctrl→exp` edge, and
+    B.4's two-bar is byte-identical post-refactor. Researcher findings found internally consistent — only
+    the "16 OOM" wording flagged.
+  - **Frontend review round (codex, 2026-06-23):** fixed 1 must-fix — the C.A.2 chart caption no longer
+    overclaims "lower regret than the entire bar curve" / "nothing the transformer can afford gets below it"
+    (now: best **regret-per-FLOP**; lower than the bar's *cheapest* point (0.229) at ~6 OOM fewer FLOPs; the
+    bar reaches lower *absolute* regret 0.171/0.141 only at ~7 OOM more FLOPs). Minor: relabeled the
+    in-context-control bar-table x-axis "training FLOPs" → "total FLOPs" (same total-FLOP numbers the chart
+    plots; matches "all FLOPs counted"); clamped `HBars` `pct` to [0,100] (defensive). **Deferred
+    low-severity (current data valid, build green):** (a) `CurvePoint`'s `bpb?`/`regret?` are both optional,
+    so the shared chart reads `p[yKey]` with no compile-time guarantee the active key exists — a mismatched
+    future series would render NaN coords; all current series carry the right key, but the markers should
+    validate if the contract is reused. (b) Pre-existing across **all** charts: marks are `role="button"` +
+    `tabindex` but have no Enter/Space activation handler (toggle is click / legend only) — an a11y gap not
+    introduced here.

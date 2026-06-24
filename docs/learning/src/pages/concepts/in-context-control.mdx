@@ -6,6 +6,8 @@ import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import Pipeline from "../../components/Pipeline.astro";
 import ControlRollout from "../../components/ControlRollout.astro";
+import RegretFlopChart from "../../components/RegretFlopChart.astro";
+import { controlCandidates } from "../../data/curves";
 
 <Layout
   title="In-context control & chemotaxis"
@@ -16,6 +18,8 @@ import ControlRollout from "../../components/ControlRollout.astro";
     { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
     { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
     { href: "/concepts/fast-weight-memory", title: "Fast-weight associative memory" },
+    { href: "/experiments/C.A.2-chemotaxis-min-control", title: "C.A.2 — chemotaxis_min (the FLOP-floor win)" },
+    { href: "/experiments/C.A.1-reservoir-control", title: "C.A.1 — reservoir candidates" },
   ]}
 >
 
@@ -132,7 +136,7 @@ start far from the peak, climb onto it, and then track it as it drifts around th
 The transformer baseline, held at **fixed 148,608 parameters**, on the drifting held-out eval, as we
 pour in more distillation:
 
-| distillation steps | training FLOPs | regret ↓ | reward ↑ |
+| distillation steps | total FLOPs | regret ↓ | reward ↑ |
 | ---: | ---: | ---: | ---: |
 | 150  | 2.97 × 10¹¹ | 0.229 | 0.704 |
 | 600  | 1.19 × 10¹² | 0.171 | 0.762 |
@@ -148,6 +152,44 @@ intact from byte prediction to **control**. The one curve the whole compendium r
 more learning per FLOP, now measured by *predict + act*.
 </Callout>
 
+## The candidates — three minimal organisms vs the bar
+
+Three minimal-organism candidates challenged the bar. Only one beat it — and *how* it won is the rung's
+most important lesson.
+
+<figure class="figure">
+  <RegretFlopChart
+    series={controlCandidates}
+    yMin={0}
+    yMax={0.55}
+    annotations={[
+      { flops: 2.7e5, regret: 0.18, text: "only chemotaxis_min reaches here", dx: 12, dy: 34 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Regret vs the μ-seeing oracle (y, lower = better; 0 = the oracle) against total FLOPs (x, log scale),
+    all FLOPs counted. The <span class="swatch transformer"></span>`transformer bar` is the incumbent
+    frontier; the <span class="swatch reservoir"></span>`reservoir` curve and the
+    <span class="swatch reservoir_plastic"></span>`reservoir + plastic` point sit **above** it (they lose
+    on regret); only the <span class="swatch chemotaxis"></span>`chemotaxis_min` point reaches the **far
+    lower-left**. Toggle any series in the legend.
+  </figcaption>
+</figure>
+
+- **[C.A.1 — reservoir, frozen readout](/experiments/C.A.1-reservoir-control):** a fixed echo-state core with a distilled linear readout. Regret falls with compute but **caps at 0.278**, above the bar's 0.229. **Loses.**
+- **[C.A.1b — reservoir + plastic readout](/experiments/C.A.1-reservoir-control):** the same core with an **online** reward-modulated readout that learns *within the episode* at ~0 distillation. It clears the random floor with genuine [Source-(iv)](/concepts/source-iv-advantage) dynamics, but its regret (0.501) is ~2.2× the bar's. **Loses on regret** — a distinct ultra-cheap / modest-skill regime.
+- **[C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control):** five hand-coded run-and-tumble scalars. **0.180 regret at $2.70\times10^{5}$ FLOPs** — lower than the bar at ~6 orders of magnitude fewer FLOPs. **Beats the bar, on the FLOP axis.**
+
+<Callout variant="insight" title="only the floor beats the bar — and that is the finding">
+Of three candidates, **only `chemotaxis_min`** reaches the lower-left, and it does so by being the rung's
+**hand-coded stationary optimum** at ~zero compute. The reservoir family clears the random floor and shows
+real learning dynamics, but a fixed reservoir + linear readout underperforms the transformer's learned
+representation on regret. It is the [Pareto-hollow reflex](/experiments/first-finding-pareto) carried onto
+control: **genuine online learning is real but modest here, while a cheap fixed reaction dominates the
+per-FLOP metric on a *stationary* rung.** Always plot the floor first — which is exactly why the next
+section reads the win as a *limitation*, not a refutation.
+</Callout>
+
 ## Read honestly — what this rung does not yet show
 
 v1 distills a **stationary reactive** source. Run-and-tumble's optimal reaction is the *same* for
@@ -159,8 +201,10 @@ climb-and-track on held-out dynamics) but it also means the rung does **not yet 
 <Callout variant="caveat">
 Frame the result as "**learns to climb and track held-out dynamics from local feedback**," not "infers
 the drift." Distinguishing a clever fixed reaction from genuine in-episode inference needs a source
-that itself *learns within the episode* — the documented next step for this rung, and the bar that
-the [reservoir + plastic-readout](/concepts/fast-weight-memory) style candidates will have to beat.
+that itself *learns within the episode* — the documented next step for this rung. The [C.A.2
+chemotaxis_min result](/experiments/C.A.2-chemotaxis-min-control) sharpens exactly this: a stationary,
+hand-coded reactor already takes the rung's per-FLOP optimum, so a harder "C.A.0b" rung — one whose
+distillation source *learns within the episode* — is what would force genuine drift-rate inference.
 </Callout>
 
 ## See also
@@ -169,5 +213,7 @@ the [reservoir + plastic-readout](/concepts/fast-weight-memory) style candidates
 - [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — the same x-axis; regret on y instead of bpb.
 - [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win a candidate may claim, and the filter every challenger to this bar must pass.
 - [Fast-weight associative memory](/concepts/fast-weight-memory) — cheap in-context memory, the raw material a within-episode control learner would lean on.
+- [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control) — the five-scalar organism that beats the bar on the FLOP axis, and why it is a floor result.
+- [C.A.1 — reservoir control candidates](/experiments/C.A.1-reservoir-control) — the echo-state family that clears the random floor but loses on regret.
 
 </Layout>
