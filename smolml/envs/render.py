@@ -57,8 +57,9 @@ def _render_forage(traj: Trajectory, out_png: str | Path) -> Path:
     pos = [s["p"] for s in states]
     g = states[0]["g"]
     fig, (ax1, ax2) = plt.subplots(2, 1, height_ratios=[3, 1], figsize=(8, 6))
-    ax1.imshow(cells, aspect="auto", origin="lower", interpolation="nearest", cmap="tab10",
-               vmin=0, vmax=9)
+    ax1.imshow(
+        cells, aspect="auto", origin="lower", interpolation="nearest", cmap="tab10", vmin=0, vmax=9
+    )
     ax1.plot(pos, range(len(pos)), color="black", lw=1.5, label="agent")
     eaten_p, eaten_t, eaten_c = [], [], []
     for t, a in enumerate(traj.action):
@@ -66,8 +67,16 @@ def _render_forage(traj: Trajectory, out_png: str | Path) -> Path:
             eaten_p.append(states[t]["p"])
             eaten_t.append(t)
             eaten_c.append("lime" if traj.reward[t] > 0 else "red")
-    ax1.scatter(eaten_p, eaten_t, c=eaten_c, marker="s", s=18, edgecolors="white",
-                linewidths=0.4, label="eat (green=+1, red=-1)")
+    ax1.scatter(
+        eaten_p,
+        eaten_t,
+        c=eaten_c,
+        marker="s",
+        s=18,
+        edgecolors="white",
+        linewidths=0.4,
+        label="eat (green=+1, red=-1)",
+    )
     ax1.set_xlabel("ring cell (color = cue type)")
     ax1.set_ylabel("step")
     ax1.set_title(f"forage rollout (good type g={g})")

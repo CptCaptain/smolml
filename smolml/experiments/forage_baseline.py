@@ -124,7 +124,11 @@ def main() -> None:
     print("\nFLOP-budget curve (winner):")
     for steps in CURVE_STEPS:
         summ, trained = distill_at(
-            fcfg, winner, ref * steps, RUNS_DIR, f"transformer-forage-{steps}steps",
+            fcfg,
+            winner,
+            ref * steps,
+            RUNS_DIR,
+            f"transformer-forage-{steps}steps",
             return_model=True,
         )
         print(
@@ -138,8 +142,13 @@ def main() -> None:
     print("\n" + table + f"\nplot: {png}")
 
     res = evaluate_control(
-        trained, forage_env_spec(fcfg), split="eval", n_episodes=1, seed=0,
-        device=next(trained.parameters()).device, record=True,
+        trained,
+        forage_env_spec(fcfg),
+        split="eval",
+        n_episodes=1,
+        seed=0,
+        device=next(trained.parameters()).device,
+        record=True,
     )
     render_rollout(res.trajectory, f"{RUNS_DIR}/sample_rollout.png")
     print(f"sample rollout: {RUNS_DIR}/sample_rollout.png")

@@ -43,15 +43,15 @@ FIXED_FAMILY = ("always_eat", "always_right", "always_left", "eat_0", "eat_1", "
 
 
 def _const(action: int):
-    return lambda _seed: (lambda _obs, _env: action)
+    return lambda _seed: lambda _obs, _env: action
 
 
 def _oracle_pol():
-    return lambda _seed: (lambda _obs, env: env.oracle_action())
+    return lambda _seed: lambda _obs, env: env.oracle_action()
 
 
 def _eat_type_pol(k: int):
-    return lambda _seed: (lambda obs, _env: EAT if obs // REWARD_LEVELS == k else RIGHT)
+    return lambda _seed: lambda obs, _env: EAT if obs // REWARD_LEVELS == k else RIGHT
 
 
 def _random_pol():
@@ -275,8 +275,11 @@ def test_rollout_flop_accounting_matches_analytic():
     fcfg = ForageConfig(horizon=8)
     spec = forage_env_spec(fcfg)
     tcfg = TransformerConfig(
-        d_model=32, n_layers=2, n_heads=4,
-        vocab_size=spec.tape_spec.vocab_size, max_seq_len=2 * fcfg.horizon + 1,
+        d_model=32,
+        n_layers=2,
+        n_heads=4,
+        vocab_size=spec.tape_spec.vocab_size,
+        max_seq_len=2 * fcfg.horizon + 1,
     )
     model = Transformer(tcfg)
     res = evaluate_control(model, spec, split="eval", n_episodes=1, seed=1, device=CPU)
@@ -293,8 +296,15 @@ def test_end_to_end_distill_smoke(tmp_path):
     budget = ref_step_flops(fcfg, 32) * 500
     cfg = ControlTrainConfig(
         model_config={"d_model": 64, "n_layers": 3, "n_heads": 4},
-        flop_budget=budget, batch_size=32, horizon=32, eval_episodes=64,
-        eval_interval=10**9, epsilon=0.05, env_name="forage", run_name="forage-smoke", seed=0,
+        flop_budget=budget,
+        batch_size=32,
+        horizon=32,
+        eval_episodes=64,
+        eval_interval=10**9,
+        epsilon=0.05,
+        env_name="forage",
+        run_name="forage-smoke",
+        seed=0,
     )
     summary, model = distill_train_run(cfg, runs_dir=tmp_path, return_model=True, env_spec=spec)
     res = evaluate_control(model, spec, split="eval", n_episodes=128, seed=999, device=CPU)
@@ -325,8 +335,7 @@ def test_render_forage_writes_nonempty_png(tmp_path):
     states = [{"cells": cells, "g": 1, "p": pos[t]} for t in range(steps)]
     action = [EAT if t % 2 == 0 else RIGHT for t in range(steps - 1)]
     reward = [
-        (1.0 if cells[pos[t]] == 1 else -1.0) if action[t] == EAT else 0.0
-        for t in range(steps - 1)
+        (1.0 if cells[pos[t]] == 1 else -1.0) if action[t] == EAT else 0.0 for t in range(steps - 1)
     ]
     traj = Trajectory(obs_token=[0] * steps, action=action, reward=reward, states=states)
     out = render_rollout(traj, tmp_path / "forage.png")
