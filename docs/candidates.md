@@ -31,6 +31,7 @@ baseline. Status: `idea` → `queued` → `running` → `beat-baseline` / `lost`
 | Equilibrium propagation | Energy-based local learning | Single mechanism for inference + learning | idea |
 | Feedback alignment / target prop | Replace exact gradients with cheaper signals | Avoids weight transport; cheaper backward | idea |
 | Fast-weight programmers / delta-rule memory | Online error-correcting (delta/LMS) write on a distributed key — `delta_mix` (B.4) | Generalizes across contexts exact count tables abstain on; exact gradient = error, no backward pass | **WON (B.4): beats the bar — 1.8485 @ 1.322e12 strictly dominates 2.0157 @ 1.478e12; first Space-B win** |
+| Routed sheet of delta columns | C local delta predictors, one routed per byte by a learned gate — `column_mix` (B.5) | Route-conditional *selection* (context×feature interaction) at ~constant FLOPs | **LOST (B.5): Pareto-hollow on enwik8 — best routed 2.4427 loses to the bar 2.4376 AND a matched-capacity single `W` 2.4181; capacity > selection** |
 | Evolution strategies / zeroth-order | Gradient-free parameter search | No backward pass; embarrassingly parallel | idea |
 
 ## Notes / honest priors
@@ -117,6 +118,27 @@ generalization mechanism, confirmed at scale). **Full 5 MB-ADR-carve: `delta_o6_
 1.8485 bpb @ 1.322e12 FLOPs — strictly dominates the 2.0157 @ 1.478e12 bar (−0.167 bpb AND fewer
 FLOPs).** The first candidate to beat the warmed-mixing bar; `delta_mix` is the new bar. See
 `docs/learning/experiments/B.4-delta-mix.md`.
+
+### B.5 result — routed sheet of delta columns (`column_mix`)
+**A clean Source-(iv) NEGATIVE: routing the delta stream is Pareto-hollow on byte prediction.**
+`column_mix` = `delta_mix` with its single delta `W` replaced by **C columns**, one routed per byte
+by a cheap per-arm contextual-bandit gate over a fixed hash bucket (`C=1` ≡ `delta_mix`
+bit-identically; gate-off ≡ a static hash route). The bet was **route-conditional selection** — a
+multiplicative context×feature interaction one linear-in-φ `W` cannot represent — NOT capacity, since
+the bar can raise `delta_dim` to `C·d` for free (sparse read is `O(sV)` regardless of `d`). A unit
+fixture confirms the lever **exists**: on a synthetic interaction source a routed sheet beats one
+column AND one column does **not** catch up when its `delta_dim` is grown to `C·d`. But on the **real
+enwik8** CI matched-FLOP kill-test (4 MB slice, total ≈1.07e10, C=4) it does **not pay**: (a) bar
+`delta_mix` **2.4376** / (b) learned gate 2.4577 / (c) gate-off 2.4427 / (d) `delta_mix` at
+`delta_dim=C·d` (matched capacity, no router) **2.4181**. **KILL:** best routed (2.4427) loses to BOTH
+the bar and the matched-capacity control — the same FLOPs on one *bigger shared* `W` beat
+*partitioning* the table across routes. Diagnostics: ~25% column load (no collapse) but each column
+starved to ~1/C the data, the learned gate **worse** than gate-off (bandit adds noise; 16/4096 buckets
+reassigned), no per-column specialization. Pre-registered failure modes (count-ladder redundancy, data
+starvation, capacity > selection) all materialized. Cross-vendor (gpt-5.5) FLOP audit: **no
+undercharge** — the kill rests on a fair matched-FLOP comparison. `delta_mix` remains the bar; phase-1b
+(lateral predictive columns) and the snake rung stay locked (gated on a flat-sheet win). See
+`docs/tasks/B.5-column-mix.md`.
 
 LOCKED (ADR 0004) — evaluation protocol: **prequential (one-step-ahead online) bpb vs.
 total FLOPs.** The model predicts each byte *before* seeing it (so memorizing the past cannot

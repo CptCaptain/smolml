@@ -16,8 +16,8 @@ only thing ``C`` routed columns add is **route-conditional selection**: ``z = W_
 switches weight matrices on a context bucket, representing a *multiplicative* context×feature
 interaction a linear-in-``φ`` predictor cannot. The bet: when the next byte depends on such an
 interaction, routed columns extract it at ~the bar's per-byte FLOPs (one delta read/write + an
-``O(C)`` router). High Pareto-hollow risk (redundancy with the count ladder, ``1/C`` data per column,
-gate collapse) — the kill-test's matched-capacity control decides it. See ``docs/tasks/B.5-...md``.
+``O(C)`` router). High Pareto-hollow risk (count redundancy, thin per-column data, gate collapse) —
+the kill-test's matched-capacity control decides it. See ``docs/tasks/B.5-column-mix.md``.
 
 Router + gate
 -------------
@@ -38,10 +38,10 @@ Degenerate identities
 
 FLOP honesty
 ------------
-``step`` FLOPs = ``super()._delta_flop_breakdown(...)`` (the chosen column **is** the bar's one delta
-stream) ``+ _route_increment``. The route increment carries only the router (hash + gate-row gather +
-argmax over ``C``) and the ``O(1)`` bandit update; at ``C = 1`` the path delegates, so the charge is
-bit-identical to the bar (zero router). ``d``/``B`` cost memory and collisions only, never FLOPs.
+``step`` FLOPs = ``super()._delta_flop_breakdown(...)`` + ``_route_increment``. The chosen column
+**is** the bar's one delta stream, so the count/delta charge is the parent's, reused verbatim; the
+route increment adds only the router + the ``O(1)`` bandit update. At ``C = 1`` the path delegates,
+so the charge is bit-identical to the bar (zero router). ``d``/``B`` cost memory only, never FLOPs.
 """
 
 import dataclasses
@@ -67,7 +67,7 @@ from smolml.models.registry import DecodeState, register_model
 class ColumnMixConfig(DeltaMixConfig):
     """:class:`DeltaMixConfig` plus the routed-column knobs.
 
-    ``n_columns`` is ``C`` (``1`` ⇒ degenerate identity to ``delta_mix``). ``route_buckets`` is ``B``
+    ``n_columns`` is ``C`` (``1`` ⇒ identity to ``delta_mix``). ``route_buckets`` is ``B``
     (power of two; the Fibonacci-hash route partition). ``route_order`` is how many recent bytes the
     route bucket hashes. ``gate_lr`` is the per-arm bandit EMA step (``0`` ⇒ frozen gate values);
     ``route_epsilon`` the ε-greedy exploration prob. ``gate_init_other`` is the init reward for
@@ -133,7 +133,7 @@ class ColumnMix(DeltaMix):
 
     def _fresh_gate(self) -> np.ndarray:
         """``(B, C)`` per-arm reward table init to the hash prior: ``gate[b, b mod C] = 0`` (the
-        prior arm), all others ``gate_init_other`` (< the worst reward ``−8``), so cold ``argmax`` is
+        prior arm), others ``gate_init_other`` (< the worst reward ``−8``), so cold ``argmax`` is
         the deterministic ``b mod C`` route and an unvisited sibling is reached only via ε."""
         cfg = self.config
         g = np.full((cfg.route_buckets, cfg.n_columns), cfg.gate_init_other)
@@ -164,7 +164,7 @@ class ColumnMix(DeltaMix):
 
     def _apply_gate_update(self, ms: _MixerState, revealed_byte: int) -> None:
         """Per-arm contextual-bandit EMA of the chosen column toward its observed reward
-        ``r = log2 p_chosen[revealed]`` (``= −bits``, ≤ 0): ``gate[b,c] += gate_lr·(r − gate[b,c])``.
+        ``r = log2 p_chosen[revealed]`` (= −bits): ``gate[b,c] += gate_lr·(r − gate[b,c])``.
         Only the chosen arm updates. No-op when ``gate_lr == 0`` (frozen gate)."""
         cfg = self.config
         if cfg.gate_lr <= 0.0:
@@ -180,7 +180,7 @@ class ColumnMix(DeltaMix):
     ) -> tuple[DecodeState, torch.Tensor, FlopBreakdown]:
         """Fold the byte, adapt the mixer + the chosen column + the gate, route, predict.
 
-        Delegates entirely to the parent (== ``delta_mix``, then ``hashed_mix``) when the column path
+        Delegates entirely to the parent (``delta_mix`` then ``hashed_mix``) when the column path
         is off, preserving the degenerate identities."""
         if not self._columns_on:
             return super().step(state, revealed_byte, pos)
@@ -269,11 +269,11 @@ class ColumnMix(DeltaMix):
     def _route_increment(self, *, did_update: bool) -> FlopBreakdown:
         """The router's exact per-byte FLOPs on top of the parent delta breakdown.
 
-        Forward (always): route hash (``3`` ops) + ``gather(1)`` gate row of ``C`` + ``pointwise(C)``
-        argmax over the row. Backward (only when a prediction was pending AND the gate learns): the
-        bandit update — reward ``log2 p[revealed]`` (``2``) + EMA step ``(r − gate)·gate_lr + =``
-        (``3``) = ``pointwise(5)``. The ε-greedy PRNG draw is non-arithmetic and omitted (matching the
-        bar's no-RNG convention)."""
+        Forward (always): route hash (``3``) + ``gather(1)`` gate row of ``C`` + ``pointwise(C)``
+        argmax. Backward (when a prediction was pending AND the gate learns): the bandit update —
+        reward ``log2 p[revealed]`` (``2``) + EMA step (``3``) = ``pointwise(5)``. The ε-greedy PRNG
+        draw is non-arithmetic and omitted; on an ε byte the gather+argmax above is conservatively
+        charged though the random branch skips it (an overcharge, never a subsidy)."""
         c = self.config.n_columns
         forward = gather_flops(1) + pointwise_flops(3 + c)
         backward = 0
@@ -317,9 +317,9 @@ class ColumnMix(DeltaMix):
         return self._warm
 
     def init_prequential_state(self) -> DecodeState:
-        """A deep copy of the warm state for one eval stream — count store, mixer weights, ``Wcols``,
-        AND ``gate`` — plus a **fresh** per-stream RNG (never copied, so streams are deterministic and
-        isolated). Leak-free: eval mutates only its own copies."""
+        """A deep copy of the warm state for one eval stream — count store, mixer weights, ``Wcols``
+        AND ``gate`` — plus a **fresh** per-stream RNG (never copied, so streams are deterministic
+        and isolated). Leak-free: eval mutates only its own copies."""
         if not self._columns_on:
             return super().init_prequential_state()
         warm = self._ensure_warm()
