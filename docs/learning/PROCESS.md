@@ -53,15 +53,19 @@ Only the chart takes data; the rest are self-contained.
 | `fastweight` (`FastWeightDemo.astro`) | Associative memory: outer-product write, matvec read, decay/forgetting, live d×V heatmap, crosstalk on similar keys. | _(none)_ |
 | `sourceiv` (`SourceIvScreen.astro`) | Toggle the (i)–(iv) sources a candidate claims → FLOP-impact bars + scout/park verdict. | _(none)_ |
 | `controlrollout` (`ControlRollout.astro`) | **In-context control / chemotaxis rung.** Scrubbable instrument over one trained held-out `ChemoEnv` rollout: regret/reward scoreboard, an unrolled W-cell field bar (concentration heat + hidden-peak ▼ / agent ▲ markers), a spacetime raster (time ↓) tracing the agent path (green) chasing the peak path (blue dashed, wrap-broken at the ring seam), and a cumulative-reward spark vs perfect/random reference lines. Step/Play/Reset/scrub; built once then mutated in place (the 33×16 raster never re-renders). | inline JSON: the full `icl_control_rollout.json` (read from `public/` at build time by the marker) |
+| `autocompleterace` (`AutocompleteRace.astro`) | **Live byte loss-per-FLOP race — consumes the model layer.** Three byte models (`context_mixing` blue, `delta_mix` orange, `transformer` green) run predict-then-learn on the SAME editable enwik8 stream: per-model top-6 next-char bars, cumulative bpb (Σ −log₂ p ÷ bytes; byte 0 = 8 bits), top-1 hit-rate, and HUD FLOPs/byte (~9.5k … ~11.5M). Editable seed (latin-1 → bytes via `charCodeAt&0xff`), Step/Play/Reset; shell built once, panels mutate per step. | inline JSON: `seedText` + each model's `config`/`weights` (byte fixtures + `transformer.weights.json`, read at build time) merged with HUD facts from `curves.ts` |
+| `cursorchase` (`CursorChase.astro`) | **Interactive chemotaxis cursor-follow — consumes the model layer.** A `<canvas>` concentration field whose peak **drifts toward your cursor at ≤1 cell/tick** (ChemoEnv's drift); three controllers (`chemotaxis_min` green, `reservoir` orange, `reservoir_plastic` rose) sense only their own cell and chemotax to chase it (parity tape: even = sense, odd = action). HUD: params + FLOPs/step (66 vs ~10k) + live mean/cumulative reward (leader-highlighted); checkboxes toggle each marker. Step/Play/Reset; canvas redraws per tick. | inline JSON: `env` + each controller's `config`/`weights` (chemotaxis fixture + reservoir `*.weights.json`) merged with HUD facts from `curves.ts` |
 
 The shared **stream scaffold** and **chart** logic live as functions in `compendium.js` (rule of
-two: one chart routine for 8 chart instances; one stream scaffold for both stream demos).
+two: one chart routine for 13 chart instances; one stream scaffold for both stream demos; one
+`wireTransport` helper — Step/Play/Reset on a timer, + a shared `.demo-transport` button style —
+for the two live model demos).
 
 ### Presentational (`.astro`)
 
 | component | purpose | key props |
 | --- | --- | --- |
-| `Layout` | Page chrome: top bar, sticky sidebar nav, content column, "See also" rail, prev/next pager. Wrap MDX body in `<Layout …>`. | `title`, `kicker?`, `blurb?`, `related?: {href,title}[]`, `landing?` |
+| `Layout` | Page chrome: top bar, sticky sidebar nav, content column, "See also" rail, prev/next pager. Wrap MDX body in `<Layout …>`. The `scripts?: string[]` prop injects extra classic scripts (deferred, in document order) into `<head>` **before** `compendium.js` — the two model-demo pages use it to load the interactive-demo model layer (`/js/models/*.js`) so the widget runtime sees `SmolModels`/`SmolDemos` at mount. | `title`, `kicker?`, `blurb?`, `related?: {href,title}[]`, `landing?`, `scripts?` |
 | `Callout` | Styled aside. Variants: `note`, `insight` (the lesson), `caveat` (read honestly), `warning`. | `variant?`, `title?` |
 | `Pipeline` | Left-to-right flow of labeled stages + arrows, optional dashed feedback leg (online loops). | `steps: {label,sub?,accent?}[]`, `feedback?` |
 | `ConceptMap` | The landing's hand-laid SVG DAG; clickable nodes link every page (the navigational spine). Edges are smooth cubic-Bézier `<path>`s (orientation-aware control points, Δ=0.4·span) with arrowheads; the experiment "bus" stays orthogonal. | _(none; static data)_ |
@@ -71,7 +75,9 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
 
 - `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`, `warm`) + datasets `firstFinding`,
   `contextMixingReference`, `prequentialBaseline`, `amortizedBaseline`, `freeUnigram`,
-  `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2), `hashedMixFull` (B.3), constants. Provenance-commented.
+  `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2), `hashedMixFull` (B.3), `deltaMix` + `deltaFull` (B.4),
+  `demoByteModels` + `demoControlModels` (the two live-demo HUD fact tables — params / FLOPs-per-step / role /
+  refBpb, transcribed from the model-layer README HUD table), constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
 - `public/icl_control_rollout.json` — a sample **trained, held-out** `ChemoEnv` rollout the harness
   writes (fields: `width, levels, horizon, mu[], pos[], conc_token[], reward[], action[], field[][],
@@ -93,12 +99,25 @@ two: one chart routine for 8 chart instances; one stream scaffold for both strea
   so it earned its own vermilion token; its cold point renders in the `reference` blue, drawn over
   the warm curve's cold start, so "cold == the context-mixing reference" reads visually).
   This keeps the interactive re-renders visually honest against the embedded PNGs.
+- **Interactive model demos (C.A) reuse existing role tokens — no new color.** The byte race keeps
+  `context_mixing` = reference blue, `delta_mix` = fast_weight orange (it IS a delta-rule fast weight, the
+  B.4 lineage), `transformer` = transformer green. The cursor chase keeps the in-context-control page's
+  `ControlRollout` legend — peak/cursor = reference blue, concentration heat = amber accent — and gives the
+  three controllers `chemotaxis_min` = transformer green (the "agent", as in `ControlRollout`),
+  `reservoir` = fast_weight orange, `reservoir_plastic` = pc rose. Both demos **consume** the engineer's
+  parity-gated model layer (`public/js/models/*.js`, `public/data/demos/*`) read-only; the markers inline
+  `config`/`weights`/`seed` at build time (escaping `<` so the seed's `<!--` cannot break the inline JSON)
+  exactly like `ControlRollout`. The live transformer is the *trained* demo export (low bpb, huge FLOPs) —
+  flagged distinct from the *untrained* transformer at ~8.0 bpb in the context-mixing curve.
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
 - **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses), `Pipeline` (8), `CardGrid` (2),
-  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 12 chart instances and
-  one stream scaffold serves both stream demos. When a viz pattern recurs it is factored.
+  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 13 chart instances,
+  one stream scaffold serves both stream demos, and one `wireTransport` helper (+ shared
+  `.demo-transport` button style) serves the two live model demos. The older bespoke transports in
+  `mountStream`/`mountControlRollout` were left as-is (their scrub/loop semantics differ; not
+  retrofitted, to avoid churning shipped parity-adjacent widgets). When a viz pattern recurs it is factored.
 - **MDX gotchas (hard-won — keep these):**
   - Wrap page body in `<Layout …>` via `import` + element, **not** the `layout:` frontmatter
     (frontmatter passes props under `frontmatter.*`, but `Layout` reads top-level props).
@@ -345,3 +364,69 @@ Both discrepancies I raised were investigated by Main and reconciled — kept he
     right role classes), 25 KaTeX spans, no `\u` leaks, and the landing map shows the `B.4 delta mix` leaf,
     the new `warm`→`fwm` edge, A.1 + B.4 both orange (the lineage), with all three B.4 links resolving.
     Researcher note found internally consistent — no science flagged.
+- **2026-06-23 (session 13 — C.A interactive model demos):** built the two runnable browser demos that
+  **consume** the engineer's parity-gated JS model layer (`public/js/models/*.js`, `public/data/demos/*`,
+  README HUD table) — making the loss-per-FLOP contrast *felt*, not just plotted. **(1) `AutocompleteRace`**
+  (`autocompleterace`) on the **context-mixing** concept ("Try it live: the loss-per-FLOP race"):
+  `context_mixing` / `delta_mix` / `transformer` run predict-then-learn on the same editable 2,048-byte
+  enwik8 seed (latin-1 text → bytes via `charCodeAt&0xff`, verified bit-identical to the fixture `stream`);
+  per model — top-6 next-char bars, live cumulative bpb (matches parity to ~1e-8), top-1 hit-rate, FLOPs/byte
+  (~9.5k / ~18k / ~11.5M → ≈1,217× gap). **(2) `CursorChase`** (`cursorchase`) on the **in-context-control**
+  concept ("Try it live: chase the cursor"): a `<canvas>` field whose peak **drifts toward your cursor at
+  ≤1 cell/tick** (ChemoEnv's own drift — keeps the peak inside the organism's local sensing range, so a fast
+  cursor never strands the reactive climber: faithful AND robust), with the three controllers chasing via the
+  exact parity control tape (even = sense, odd = action, greedy `argmax(logits[L..L+3))`, move, reward = conc
+  at the new cell); HUD shows params + FLOPs/step (66 vs ~10k) + live mean/cumulative reward (leader-
+  highlighted) and per-organism toggles.
+  - **Shared (rule of two):** new `wireTransport` helper (Step/Play/Reset on a timer) + `.demo-transport`
+    style serve both new demos; both reuse existing role tokens (no new color) and `ControlRollout`'s
+    build-time inline-JSON pattern. The older `mountStream`/`mountControlRollout` transports were left as-is
+    (different scrub/loop semantics; not retrofitted, to avoid churning shipped parity-adjacent widgets).
+  - **Plumbing:** added a `Layout` `scripts?: string[]` prop that injects the model-layer classic scripts
+    into `<head>` deferred-in-order **before** `compendium.js` (so `SmolModels`/`SmolDemos` exist at mount);
+    `relativize.mjs` rewrites the new `/js/models/*` srcs for file:// unchanged. Added
+    `demoByteModels`/`demoControlModels` HUD-fact tables to `curves.ts` (params/FLOPs/role/refBpb, from the
+    README HUD table — single source of truth); the markers read `config`/`weights`/`seed` from the
+    fixtures/weights JSON at build time and inline them (escaping `<` so the seed's `<!--` can't break the
+    inline `<script>`; transformer weights ~428 KB inline → context-mixing page ~592 KB, expected).
+  - **Wiring (no orphans):** both demos live on existing concept pages — **no new page / nav entry /
+    ConceptMap node**. Reciprocal See-also added: context-mixing ↔ in-context-control ↔ loss-per-flop.
+    `BpbFlopChart` still 13 uses; `Pipeline` 8.
+  - **Honesty:** a `caveat` Callout on context-mixing flags that the live transformer is the *trained* demo
+    export (distinct from the *untrained* ~8.0-bpb transformer in the curve above); a `caveat` on
+    in-context-control flags that the chase's live rewards are an interactive field, NOT the held-out
+    distillation regret in the bar. No science flagged.
+  - Build green (**20 pages**); headless `file://` smoke (both pages): **zero console errors**,
+    `SmolModels`/`SmolDemos` load via the `scripts` prop, both widgets mount. Byte race: bpb advances live
+    (online learners warm from 8 → ~4.17, trained transformer ~2.70; hit-rates 32 / 33 / 49 %; 6 top-k bars
+    each; editable + Step/Play/Reset). Cursor chase: the organism chased the cursor cell 8 → 2 → 14 with
+    `chemotaxis_min` leading (mean ~0.89 at **66 FLOPs/step**) over `reservoir` (0.80) and `reservoir_plastic`
+    (honestly weak — heavier ≠ better), toggle dims a marker. Re-ran the engineer's parity gate read-only:
+    **ALL 6 PORTS PARITY-GREEN** (model layer untouched). Did NOT commit, did NOT modify the model layer /
+    Python, did NOT run project-wide gates; `git diff` confined to docs/learning (5 files modified + 2 new
+    components).
+  - **Cross-vendor review round (codex, same day):** fixes after the frontend review.
+    - **Cursor-chase tick ordering (fidelity).** Reordered `step()` to ChemoEnv's real phase: for each
+      organism sense (CURRENT field) → act → move; THEN drift the shared peak once; THEN reward =
+      `concentration(new agentX, new peak)` and `steps++`. The drift now uses ChemoEnv's **exact integer
+      phase-accumulator** (`smolml/envs/chemotaxis.py`): the integer peak jumps ±1 toward the cursor only
+      when a phase accumulator at the env's `RATE` (0.3 — the fixtures' drift_rate is 0.2–0.3) crosses 1,
+      so the peak stays on a cell and inside a local climber's sensing range. (The earlier 1-cell/tick
+      continuous drift, masked by the unfaithful drift-before-sense order, stranded the run-and-tumble
+      climber once the faithful order made its sensed token one drift-step stale — the drift rate, not the
+      ordering, was the bug.) Verified in node + browser: a continuously-swept cursor is tracked
+      (chemotaxis_min mean ~0.86 leads reservoir ~0.59 / plastic ~0.27) and a target teleport re-acquires
+      (agent 8→2→14 as the peak drifts over).
+    - **Byte-race EOF (fidelity).** `step()` now skips the model.step **fold** of the final byte (its
+      prediction is never scored), so executed steps == scored predictions (prequential folds n−1 times).
+      bpb is unchanged (still parity-exact); stepping past a short edited seed caps cleanly at `byte n / n`.
+    - **Accessibility.** CursorChase gained a keyboard-operable **peak-target range slider** (arrow keys
+      move the peak; synced with the pointer) and an `aria-live="polite"` status line announcing the
+      current leader + per-model mean reward (throttled to leader-change / every 30 steps to avoid SR
+      spam). `wireTransport` now gates the Play auto-timer on `prefers-reduced-motion: reduce` — Play is
+      hidden, Step-only fallback (verified: Play hidden, Step still advances).
+    - **Caption honesty.** Softened the two widget captions so they cannot read false after interaction:
+      "**On this seed stream**, the transformer reaches the lowest bpb…" and "chemotaxis_min **typically**
+      tracks tightest…".
+    - Rebuilt green (**20 pages**); parity re-run **ALL 6 PORTS PARITY-GREEN** (loops only, model layer
+      untouched); headless re-smoke of both demos = **zero console errors**. Still uncommitted.

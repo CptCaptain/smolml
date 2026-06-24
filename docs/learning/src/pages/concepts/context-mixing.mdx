@@ -6,11 +6,18 @@ import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import Pipeline from "../../components/Pipeline.astro";
 import ContextMixingDemo from "../../components/ContextMixingDemo.astro";
+import AutocompleteRace from "../../components/AutocompleteRace.astro";
 
 <Layout
   title="Online context mixing"
   kicker="CONCEPT 06"
   blurb="The PAQ/cmix reference ceiling: cheap order-k models + online logistic mixing."
+  scripts={[
+    "/js/models/_demo_common.js",
+    "/js/models/context_mixing.js",
+    "/js/models/delta_mix.js",
+    "/js/models/transformer.js",
+  ]}
   related={[
     { href: "/concepts/compression-equals-prediction", title: "Compression = prediction" },
     { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
@@ -124,6 +131,25 @@ On the bundled English sample, adding orders walks the bpb-vs-FLOP frontier *dow
 $\approx 8.0$ bpb spending **$\sim$450&times; more** compute. That gap is the ceiling a candidate
 is chasing — see the [context-mixing reference experiment](/experiments/context-mixing-reference).
 
+## Try it live: the loss-per-FLOP race
+
+The numbers above are the steady state. Here is the same idea *running in your browser* — the
+parity-checked model ports themselves, reading a real 2,048-byte `enwik8` snippet one byte at a
+time. Two racers are this page's online learners (`context_mixing` and its delta-rule cousin
+`delta_mix`), carrying **zero pretrained parameters** and warming up live; the third is a small
+**trained** transformer. Press Play and watch each model's cumulative bpb, top-1 hit-rate, and
+next-byte guesses — then read the FLOPs/byte beside each.
+
+<AutocompleteRace />
+
+<Callout variant="caveat">
+The live transformer here is a **small trained** model (the demo export), so it reaches a genuinely
+low bpb — unlike the *untrained* transformer at ≈8.0 bpb in the curve above. Both readings are
+honest: trained or not, the transformer's per-byte FLOPs dwarf the online mixer's by roughly three
+orders of magnitude. The race measures **cost**, not just accuracy — which is the whole
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws) point.
+</Callout>
+
 ## See also
 
 - [Compression = prediction](/concepts/compression-equals-prediction) — why a compressor *is* a predictor.
@@ -131,5 +157,6 @@ is chasing — see the [context-mixing reference experiment](/experiments/contex
 - [First finding](/experiments/first-finding-pareto) — where this free reference Pareto-dominates the neural runs.
 - [Online warm-start](/concepts/online-warmup) — this same mixer, warmed on the prior corpus first.
 - [Experiment B.2 — warmed mixing](/experiments/B.2-warmed-mixing) — warming this reference beats the transformer per FLOP.
+- [In-context control](/concepts/in-context-control) — the same live treatment for *acting*: drive a peak and watch minimal controllers chase it.
 
 </Layout>

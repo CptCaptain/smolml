@@ -6,11 +6,18 @@ import Layout from "../../layouts/Layout.astro";
 import Callout from "../../components/Callout.astro";
 import Pipeline from "../../components/Pipeline.astro";
 import ControlRollout from "../../components/ControlRollout.astro";
+import CursorChase from "../../components/CursorChase.astro";
 
 <Layout
   title="In-context control & chemotaxis"
   kicker="CONCEPT 09"
   blurb="Act in a drifting world and learn to track a moving optimum from local feedback — measuring predict + act, not just predict."
+  scripts={[
+    "/js/models/_demo_common.js",
+    "/js/models/chemotaxis_min.js",
+    "/js/models/reservoir.js",
+    "/js/models/reservoir_plastic.js",
+  ]}
   related={[
     { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
     { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
@@ -127,6 +134,24 @@ start far from the peak, climb onto it, and then track it as it drifts around th
 
 <ControlRollout />
 
+## Try it live: chase the cursor
+
+The rollout above is one *trained transformer* on a fixed held-out episode. Below, **you** are the
+environment: move your cursor and the concentration peak tracks it, while three **minimal
+controllers** sense only their own cell and chemotax to chase you. Toggle each and watch the trade —
+the 5-parameter `chemotaxis_min` tracks tightest at just **66 FLOPs per step**, while the echo-state
+`reservoir` and online-plastic `reservoir_plastic` spend ~150× more per step and, read honestly,
+track less well here.
+
+<CursorChase />
+
+<Callout variant="caveat">
+This is an *interactive* field you drive, not the held-out distillation eval — so its live rewards
+are not the regret numbers in the bar below. What it shows faithfully is the **cost gap**: tracking
+quality per FLOP, the [loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws) discipline applied to
+control. A heavier controller is not automatically a better one.
+</Callout>
+
 ## The bar — what it costs, what it buys
 
 The transformer baseline, held at **fixed 148,608 parameters**, on the drifting held-out eval, as we
@@ -169,5 +194,6 @@ the [reservoir + plastic-readout](/concepts/fast-weight-memory) style candidates
 - [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — the same x-axis; regret on y instead of bpb.
 - [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win a candidate may claim, and the filter every challenger to this bar must pass.
 - [Fast-weight associative memory](/concepts/fast-weight-memory) — cheap in-context memory, the raw material a within-episode control learner would lean on.
+- [Online context mixing](/concepts/context-mixing) — the live byte race: the same predict-then-learn loop, measuring bpb per FLOP instead of reward.
 
 </Layout>

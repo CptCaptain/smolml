@@ -12,8 +12,11 @@ interface Props {
   blurb?: string;
   related?: Related[];
   landing?: boolean;
+  /** Extra classic scripts to load (deferred, in order) BEFORE compendium.js —
+   *  e.g. the interactive-demo model layer. file://-safe, no ESM. */
+  scripts?: string[];
 }
-const { title, kicker, blurb, related = [], landing = false } = Astro.props;
+const { title, kicker, blurb, related = [], landing = false, scripts = [] } = Astro.props;
 
 const here = Astro.url.pathname.replace(/\/$/, "") || "/";
 const isActive = (href: string) => (href.replace(/\/$/, "") || "/") === here;
@@ -40,7 +43,10 @@ const sections: { label: string; items: NavItem[] }[] = [
     <title>{title} · smolml compendium</title>
     <meta name="description" content={blurb ?? "The smolml interactive learning compendium."} />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2316130e'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%23e8b54d' font-family='monospace'%3E%CE%A3%3C/text%3E%3C/svg%3E" />
-    <!-- Classic script (no ESM) so interactivity works from file:// with no server. -->
+    <!-- Classic scripts (no ESM) so interactivity works from file:// with no server.
+         Page-supplied scripts (e.g. the demo model layer) load first, then the
+         widget runtime that mounts them — deferred scripts run in document order. -->
+    {scripts.map((s) => <script is:inline defer src={s}></script>)}
     <script is:inline defer src="/js/compendium.js"></script>
   </head>
   <body>

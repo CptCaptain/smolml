@@ -1,0 +1,38 @@
+---
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { demoByteModels } from "../data/curves";
+// Marker for the autocomplete / live-bpb race. Reads the byte fixtures (the
+// shared latin-1 seed text + each model's create config) and the transformer's
+// exported weights at build time, and inlines them into the widget's JSON
+// script — exactly like ControlRollout reads its rollout JSON. The page loads
+// the byte ports first (Layout `scripts` prop), then public/js/compendium.js
+// mounts this. Anchor on process.cwd() (= docs/learning during build/dev), NOT
+// import.meta.url (which points at the bundled chunk at prerender). See
+// PROCESS.md for the file:// model.
+const demos = path.join(process.cwd(), "public", "data", "demos");
+const readJSON = (f: string) => JSON.parse(readFileSync(path.join(demos, f), "utf8"));
+
+const cm = readJSON("context_mixing.fixture.json");
+const dm = readJSON("delta_mix.fixture.json");
+const txWeights = readJSON("transformer.weights.json");
+
+// The fixture `config` block is the single source of truth for create(); the
+// transformer reads its config from its own weights JSON, so it needs `weights`.
+const createOpts: Record<string, unknown> = {
+  context_mixing: { config: cm.config },
+  delta_mix: { config: dm.config },
+  transformer: { weights: txWeights },
+};
+// Merge the HUD facts (params / FLOPs-per-byte / role, from curves.ts) with the
+// per-model create opts. seed_text is shared by all three byte fixtures.
+const models = demoByteModels.map((m) => ({ ...m, ...createOpts[m.id] }));
+const data = { seedText: cm.seed_text, models };
+// Escape `<` so the seed text's literal `<!--` / any `</script>` cannot break
+// out of the inline JSON <script>; JSON.parse reads `\u003c` back as `<`.
+const json = JSON.stringify(data).replace(/</g, "\\u003c");
+---
+
+<figure class="race" data-widget="autocompleterace">
+  <script type="application/json" is:inline set:html={json} />
+</figure>
