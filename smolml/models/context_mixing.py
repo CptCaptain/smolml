@@ -84,6 +84,13 @@ class _MixerState:
     W: np.ndarray | None = None  # (V, delta_dim) online fast weights
     last_phi: tuple[np.ndarray, np.ndarray] | None = None  # (indices[s], signs[s]) of the last key
     last_p_delta: np.ndarray | None = None  # (V,) softmax(W·phi) of the pending delta prediction
+    # Optional routed-column stream (ColumnMix only; None otherwise): C per-column delta-rule fast
+    # weights, the per-arm gate reward table, a per-stream RNG, and the pending route bookkeeping.
+    Wcols: np.ndarray | None = None  # (C, V, delta_dim) per-column online fast weights
+    gate: np.ndarray | None = None  # (B, C) per-arm reward (=-bits) estimates
+    rng: object = None  # np.random.Generator for epsilon-exploration (fresh per stream)
+    last_bucket: int | None = None  # route bucket of the pending prediction
+    last_route: int | None = None  # chosen column id of the pending prediction
 
 
 def laplace_prob(counts: np.ndarray, alpha: float) -> np.ndarray:
