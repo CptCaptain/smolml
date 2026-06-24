@@ -489,6 +489,29 @@ learning shows up as **rising `second_half_reward`** and **falling regret** — 
 quantities the rung ranks on. (World-model bits is a within-policy diagnostic, not
 a cross-run "lower = better" signal; see the metric section.)
 
+**Registered candidates.** `reservoir` (Task C.A.1, `smolml/models/reservoir.py`) is
+such an entrant — a **frozen echo-state core** (a fixed-random `W_in`/`W_res`, counted in
+`num_params` for memory parity but never trained: 0 backward) plus a **distilled linear
+readout** (the only trainable params). It rolls its `O(d_res²)` state per `step`
+independent of context length and overrides `flops`/`step` so the recurrence is charged 0
+backward and the readout only its `dW_out` outer product — no rung change, just the seam.
+Driver: `uv run python -m smolml.experiments.reservoir_control`.
+
+`reservoir_plastic` (Task C.A.1b, same file) reuses that frozen core unchanged but makes the
+readout **adapt ONLINE in `step`** (FLOP-counted): a working copy of `(W, b)` lives in the
+decode cache and is updated by a gradient-free local rule — a softmax **delta rule** on the
+`conc_slice` (world model) and a **reward-modulated Hebbian** rule with a leaky baseline on
+the `action_slice` (policy) — so every adaptation FLOP is charged to `step`'s `backward`
+(ADR 0004). The headline is the **~0-distillation** point (`flop_budget` below one train step
+⇒ 0 train steps; all learning is online); it clears the random floor at a few cents of reward.
+Driver: `uv run python -m smolml.experiments.reservoir_plastic_control`.
+
+`chemotaxis_min` (Task C.A.2, `smolml/models/chemotaxis_min.py`) is the FLOP-floor
+reference: a hand-structured run-and-tumble controller with five learnable scalars whose
+in-context adaptation is a leaky integrator (no weight change in `step`), so its honest
+total FLOPs is dominated by the cheap eval rollout — orders of magnitude below the
+transformer bar. Drive it with `uv run python -m smolml.experiments.chemotaxis_min_control`.
+
 ### Regenerating the board
 
 ```python

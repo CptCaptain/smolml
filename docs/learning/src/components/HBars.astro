@@ -1,0 +1,36 @@
+---
+// Horizontal labeled value bars: a row per bar, width ∝ a precomputed percent,
+// the value printed inside the fill, colored by a semantic accent class. The
+// caller decides the scale and whether longer means better (the figcaption
+// says which), so one component serves both B.4's "lower = shorter" bpb
+// comparison and the control rung's "higher = longer" within-episode reward
+// bars. Styles live in global.css (`.genbars` / `.genbar-*`) so the runtime
+// DOM the chart script never touches still picks them up. The track + fill +
+// value sit on one source line on purpose: no whitespace may leak inside the
+// fill (it would print as a stray gap). See PROCESS.md.
+interface Bar {
+  /** left-hand row label. */
+  label: string;
+  /** fill width as a percent (0–100), precomputed by the caller. */
+  pct: number;
+  /** text shown inside the fill, e.g. "0.844" or "3.73 bpb". */
+  text: string;
+  /** accent class suffix → `.genbar-fill.<accent>` in global.css. */
+  accent: string;
+}
+interface Props {
+  bars: Bar[];
+}
+const { bars } = Astro.props;
+---
+
+<div class="genbars">
+  {
+    bars.map((b) => (
+      <div class="genbar-row">
+        <span class="genbar-label">{b.label}</span>
+        <span class="genbar-track"><span class={`genbar-fill ${b.accent}`} style={`width:${Math.min(100, Math.max(0, b.pct))}%`}>{b.text}</span></span>
+      </div>
+    ))
+  }
+</div>

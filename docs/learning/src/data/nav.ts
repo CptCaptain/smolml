@@ -142,6 +142,20 @@ export const experiments: NavItem[] = [
     kicker: "EXP B.4",
   },
   {
+    slug: "C.A.1-reservoir-control",
+    href: "/experiments/C.A.1-reservoir-control",
+    title: "C.A.1 — reservoir control candidates",
+    blurb: "Echo-state reservoir + readout (frozen, then online-plastic): clears the random floor, loses to the bar on regret.",
+    kicker: "EXP C.A.1",
+  },
+  {
+    slug: "C.A.2-chemotaxis-min-control",
+    href: "/experiments/C.A.2-chemotaxis-min-control",
+    title: "C.A.2 — chemotaxis_min (the FLOP-floor win)",
+    blurb: "Five hand-coded run-and-tumble scalars beat the transformer bar on the FLOP axis — exposing the rung's stationarity limit.",
+    kicker: "EXP C.A.2",
+  },
+  {
     slug: "first-finding-pareto",
     href: "/experiments/first-finding-pareto",
     title: "First finding — the win is Pareto-hollow",
