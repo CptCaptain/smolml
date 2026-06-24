@@ -489,6 +489,14 @@ learning shows up as **rising `second_half_reward`** and **falling regret** — 
 quantities the rung ranks on. (World-model bits is a within-policy diagnostic, not
 a cross-run "lower = better" signal; see the metric section.)
 
+**Registered candidates.** `reservoir` (Task C.A.1, `smolml/models/reservoir.py`) is
+such an entrant — a **frozen echo-state core** (a fixed-random `W_in`/`W_res`, counted in
+`num_params` for memory parity but never trained: 0 backward) plus a **distilled linear
+readout** (the only trainable params). It rolls its `O(d_res²)` state per `step`
+independent of context length and overrides `flops`/`step` so the recurrence is charged 0
+backward and the readout only its `dW_out` outer product — no rung change, just the seam.
+Driver: `uv run python -m smolml.experiments.reservoir_control`.
+
 ### Regenerating the board
 
 ```python
