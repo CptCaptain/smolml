@@ -4,6 +4,7 @@ Importing this package registers the built-in models (their ``@register_model``
 decorators run on import), so ``list_models()`` is populated.
 """
 
+from smolml.models.chemotaxis_min import ChemoMinConfig, ChemotaxisMin
 from smolml.models.context_mixing import ContextMixing, ContextMixingConfig
 from smolml.models.delta_mix import DeltaMix, DeltaMixConfig
 from smolml.models.fast_weight import FastWeightConfig, FastWeightMemory
@@ -35,6 +36,8 @@ __all__ = [
     "HashedMixConfig",
     "LanguageModel",
     "ContextMixing",
+    "ChemoMinConfig",
+    "ChemotaxisMin",
     "ContextMixingConfig",
     "DeltaMix",
     "DeltaMixConfig",

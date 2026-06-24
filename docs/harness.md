@@ -506,6 +506,12 @@ the `action_slice` (policy) — so every adaptation FLOP is charged to `step`'s 
 ⇒ 0 train steps; all learning is online); it clears the random floor at a few cents of reward.
 Driver: `uv run python -m smolml.experiments.reservoir_plastic_control`.
 
+`chemotaxis_min` (Task C.A.2, `smolml/models/chemotaxis_min.py`) is the FLOP-floor
+reference: a hand-structured run-and-tumble controller with five learnable scalars whose
+in-context adaptation is a leaky integrator (no weight change in `step`), so its honest
+total FLOPs is dominated by the cheap eval rollout — orders of magnitude below the
+transformer bar. Drive it with `uv run python -m smolml.experiments.chemotaxis_min_control`.
+
 ### Regenerating the board
 
 ```python
