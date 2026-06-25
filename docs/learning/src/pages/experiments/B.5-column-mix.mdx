@@ -1,0 +1,202 @@
+---
+title: B.5 — routed sheet of delta columns (a clean Source-(iv) negative)
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import BpbFlopChart from "../../components/BpbFlopChart.astro";
+import HBars from "../../components/HBars.astro";
+import { columnMix } from "../../data/curves";
+
+<Layout
+  title="B.5 — column_mix: routed sheet of delta columns (a clean Source-(iv) negative)"
+  kicker="EXP B.5"
+  blurb="Routing one delta predictor into C columns — an MoE-of-deltas — is Pareto-hollow on byte prediction. At matched FLOPs the same budget spent on one bigger shared table beats partitioning it across routes: capacity beats selection. delta_mix stays the 1.8485 bpb bar. Failures are first-class data."
+  related={[
+    { href: "/experiments/B.4-delta-mix", title: "B.4 — delta-rule fast weights (the bar this had to beat)" },
+    { href: "/concepts/fast-weight-memory", title: "Fast-weight associative memory" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — plot the floor first" },
+    { href: "/concepts/context-mixing", title: "Online context mixing" },
+    { href: "/concepts/in-context-control", title: "In-context control & chemotaxis" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+  ]}
+>
+
+<Callout variant="caveat" title="a NEGATIVE — read it as the lesson it sharpens">
+`column_mix` does **not** beat the bar. On the matched-FLOP kill-test the best routed config (gate-off,
+**2.4427 bpb**) loses to **both** the `delta_mix` bar (**2.4376**) and a matched-capacity control —
+`delta_mix` with the columns' total width folded into **one shared table** (**2.4181**). The same FLOPs
+spent on *more capacity in one table* beat *partitioning that capacity across routes*. We log it as
+carefully as a win: it pins down exactly **why** — on dense byte targets, capacity and convergence win;
+context-conditional routing is overhead.
+</Callout>
+
+**Status:** mechanism sound, honestly metered, cross-vendor (gpt-5.5) FLOP-audited — and on the
+matched-FLOP kill-test, **KILLED**. The selection lever it bets on provably *exists* (a synthetic
+interaction source isolates it), but it does **not pay** on real `enwik8`. **Builds on:**
+[B.4 — delta-rule fast weights](/experiments/B.4-delta-mix) (the **1.8485 bpb** bar it had to beat).
+**Concepts:** [fast-weight memory](/concepts/fast-weight-memory),
+[Source-(iv)](/concepts/source-iv-advantage), [online context mixing](/concepts/context-mixing),
+[prequential evaluation](/concepts/prequential-evaluation).
+
+## The bet (Source-(iv))
+
+[`delta_mix`](/experiments/B.4-delta-mix) is already a **sheet of one**: a single online delta-rule
+fast-weight $W$ over a sparse signed-hashed bag of byte n-grams, mixed with the count ladder. Its
+prediction $z = W\varphi$ is **linear in $\varphi$**. `column_mix` replaces that one $W$ with $C$
+**columns**, one chosen per byte by a cheap learned gate — an **MoE-of-deltas**, 100% local learning, no
+global backward pass.
+
+The seductive pitch is **"$C$ columns = $C\times$ capacity at constant FLOPs."** It is **false**. A sparse
+read is $O(sV)$ regardless of the table width $d$ (the bar's own feasibility crux), so `delta_mix` can
+simply set $\texttt{delta\_dim} = C\cdot d$ for **zero** extra FLOPs and get the *same* capacity in **one
+shared $W$** — updated by **every** byte (no data split), fewer collisions, full convergence. So a sheet
+buys no FLOP-free capacity the bar cannot buy more cheaply.
+
+<Callout variant="insight" title="the only real lever is route-conditional selection">
+A single linear $W$ computes one fixed function of $\varphi$: the same features always map to the same
+logits. A routed sheet computes $z = W_{\text{route}(\text{ctx})}\,\varphi$ — it **switches weight
+matrices on a context bucket**, so the *same* n-gram features can map to *different* logits depending on a
+separate route context. That is a **multiplicative context×feature interaction** a linear-in-$\varphi$
+predictor **cannot represent at any $d$**. The whole (iv) bet rides on whether real byte streams contain
+that interaction *and* whether extracting it beats the capacity you gave up to partition the table.
+</Callout>
+
+## Mechanism — one chosen column per byte, plus a bandit gate
+
+`column_mix` inherits `delta_mix`'s warmed hashed count ladder, the logistic mixer, the feature map
+$\varphi$, and **all** of its FLOP accounting. It adds two pieces:
+
+- **A column array** $W_{\text{cols}} \in \mathbb{R}^{C\times V\times d}$ (init $0$ — an unwritten column
+  abstains, exactly like the bar's unwritten $W$). The chosen column **is** the bar's single delta stream.
+- **A router + a per-arm bandit gate.** A cheap Fibonacci hash of the recent bytes picks a bucket $b$;
+  the gate's argmax (with a little $\varepsilon$-exploration) picks the active column $c^\*$. The chosen
+  column reads $z = W_{c^\*}\varphi$ (still touching only $s$ columns of one matrix) and feeds it in as the
+  **same single mixer row** `delta_mix` uses — so the count-side path and mixer width are **identical** to
+  the bar. After the reveal, two local rules fire: the column's own **delta (LMS)** update on its routed
+  sub-stream, and an **EMA bandit** nudging $\texttt{gate}[b, c^\*]$ toward the observed reward
+  ($=-\text{bits}$). The router is $O(C)$ — under 0.2% of the bar's per-byte FLOPs at $C \le 16$.
+
+The degenerate cases are exact by construction: $C = 1$ is **bit-identical** to `delta_mix`, and gate-off
+($\texttt{gate\_lr}=0,\ \varepsilon=0$) is an exact static-routing baseline — so the kill-test compares the
+*same code* with routing on and off.
+
+## The lever provably EXISTS
+
+On a synthetic **interaction source** — a regime byte selects *which* (n-gram → next-byte) mapping is
+active, so the same n-gram predicts **different** bytes in different regimes — the routed sheet ($C>1$)
+beats the single column, **and** the single column does **not** catch up even when its
+$\texttt{delta\_dim}$ is grown to the sheet's full width $C\cdot d$:
+
+<Callout variant="insight" title="selection beats capacity — when the interaction is real">
+$C>1$ beats $C=1$ on the interaction source by a clean numeric margin, **and** $C=1$ plateaus *even at
+matched capacity* ($\texttt{delta\_dim}=C\cdot d$). So the interaction is real and capacity cannot fake
+it: route-conditional selection extracts loss a single linear-in-$\varphi$ predictor is structurally blind
+to. The lever is not imaginary — the only question left is whether **real text** rewards it.
+</Callout>
+
+## …but it does NOT pay — the matched-FLOP kill-test
+
+The kill-test runs four entrants on real `enwik8` (4 MB slice) at **matched total FLOPs**
+($\approx 1.07\times10^{10}$, $C = 4$). Routing must earn its keep as **selection**, so it must beat
+**both** the bar **and** the matched-*capacity* control:
+
+| run | bpb | what it isolates |
+| --- | ---: | --- |
+| (a) `delta_mix` — the bar ($C=1$) | 2.4376 | one shared delta stream, every byte |
+| (b) `column_mix` — learned gate | 2.4577 | $C=4$ routed columns + an online bandit gate |
+| (c) `column_mix` — gate-off (hash route) | 2.4427 | $C=4$, fixed hash route (the routing, no learning) |
+| **(d) `delta_mix` — matched capacity ($\texttt{delta\_dim}=C\cdot d$)** | **2.4181** | the columns' total width in **one shared table** |
+
+<figure class="figure">
+  <BpbFlopChart
+    series={columnMix}
+    yMin={2.41}
+    yMax={2.46}
+    annotations={[
+      { flops: 1.07e10, bpb: 2.4181, text: "matched-capacity control (d): one bigger shared table — the lowest", dx: 80, dy: 10 },
+      { flops: 1.07e10, bpb: 2.4577, text: "learned routing (b): above the bar AND the control", dx: 80, dy: -8 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    bpb on the real `enwik8` 4 MB slice, all four entrants at **matched total FLOPs**
+    ($\approx 1.07\times10^{10}$), so they stack at one x — the **vertical** spread (~0.04 bpb) is the
+    whole result. The two **lowest** points are both
+    <span class="swatch fast_weight"></span>`delta_mix` (orange): the bar (a) and, below it, the
+    matched-capacity control (d). The routed
+    <span class="swatch column_mix"></span>`column_mix` candidate (b, learned gate) sits **highest**, with
+    the <span class="swatch neutral"></span>gate-off ablation (c) just below it — both **above their own
+    parent**. Routing earns its keep only if the best routed config beats both (a) and (d); the best
+    (c, 2.4427) clears **neither**. **KILL.**
+  </figcaption>
+</figure>
+
+**Verdict: KILL.** The best routed config (gate-off, **2.4427**) is above **both** the bar
+(**2.4376**) and the matched-capacity control (**2.4181**). The same FLOPs spent on **one bigger shared
+table** beat **partitioning** that capacity across routes — *capacity beats selection*. And the
+**learned** gate (b, **2.4577**) is **worse than gate-off** (c, **2.4427**): the bandit added noise rather
+than finding a better-than-hash assignment.
+
+### Why it failed — the diagnostics
+
+The pre-registered failure mode is exactly what happened: at matched total FLOPs each of the $C$ columns
+sees only $\approx N/C$ delta updates, so every column is $\sim C\times$ less converged. The load was
+**perfectly even** — no column specialized:
+
+<figure class="figure">
+  <HBars
+    bars={[
+      { label: "column 0", pct: 25, text: "~25%", accent: "column_mix" },
+      { label: "column 1", pct: 25, text: "~25%", accent: "column_mix" },
+      { label: "column 2", pct: 25, text: "~25%", accent: "column_mix" },
+      { label: "column 3", pct: 25, text: "~25%", accent: "column_mix" },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Per-column routing load (fraction of bytes routed to each of the $C=4$ columns). It is **even**
+    (~25% each) — the gate found **no** specialization to exploit, so every column is just a starved,
+    under-converged slice of the one stream the bar trains in full. Even load is *not* gate collapse (that
+    would be "≡ the bar"); it is the opposite — the routing spread the data thin for no return.
+  </figcaption>
+</figure>
+
+The delta-row mixer weight stayed load-bearing (the columns still predict), but no column reached a
+distinct conditional bpb against the bar on its own routed bytes — there was no per-column specialization
+for the gate to find. A cross-vendor (gpt-5.5) audit of the router gather/argmax and the bandit-update
+scalar count found **no FLOP undercharge**, so the kill rests on an honest, matched comparison.
+
+## What we learned
+
+1. **Capacity beats selection on dense byte targets.** Every byte carries a target, so the predictor that
+   sees *all* the data in *one* well-converged table beats $C$ partitioned, half-trained columns — even
+   when a context×feature interaction genuinely exists. Spend the FLOP-free capacity, don't partition it.
+2. **A real lever can still be Pareto-hollow.** The selection interaction is provably present (the
+   synthetic source isolates it), yet on real text its marginal loss-reduction is swamped by the
+   convergence and capacity it costs. *Existing* ≠ *paying* — the [first-finding](/experiments/first-finding-pareto)
+   reflex, carried into routing.
+3. **The learned gate underperformed gate-off.** With no specialization to discover, the bandit's
+   exploration only injected noise — a clean reminder that a learned router is a liability unless there is
+   structure for it to find.
+4. **This is why the local-learning thread turns to control.** On dense next-byte prediction, capacity and
+   convergence dominate, leaving little room for structure to pay. The scalar-reward,
+   no-derivative [control setting](/concepts/in-context-control) is where a local learner's
+   credit-assignment edge has a real chance — so the search moves there next.
+
+<Callout variant="note" title="scale & reproduce">
+CI-fast kill-test (downloads `enwik8` once; minutes): `uv run python -m smolml.experiments.column_mix_enwik8`.
+The full ADR carve was **not** run — the kill-test killed it first (the gate per the spec: a full-corpus
+run happens only if the kill-test passes). Model: `smolml/models/column_mix.py`; tests:
+`tests/test_column_mix.py`; spec: `docs/tasks/B.5-column-mix.md`.
+</Callout>
+
+## See also
+
+- [B.4 — delta-rule fast weights](/experiments/B.4-delta-mix) — the **1.8485 bpb** bar this had to beat, and the "sheet of one" `column_mix` tried to widen into a routed sheet.
+- [Fast-weight associative memory](/concepts/fast-weight-memory) — the delta-rule stream each column is a copy of.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win a non-backprop candidate may claim, and the filter `column_mix` failed.
+- [First finding — plot the floor first](/experiments/first-finding-pareto) — the Pareto-hollow reflex, here carried onto routing: a real lever that does not pay.
+- [Online context mixing](/concepts/context-mixing) — the logistic mixer the chosen column feeds as one row.
+- [In-context control & chemotaxis](/concepts/in-context-control) — where the local-learning thread goes next, after capacity wins on byte prediction.
+
+</Layout>
