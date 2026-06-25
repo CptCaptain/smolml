@@ -193,18 +193,19 @@ honest bar is the **best of a training-hyperparameter sweep at fixed params**. A
     yMin={0}
     yMax={0.5}
     annotations={[
-      { flops: 3e11, regret: 0.16, text: "transformer bar — flat across the swept FLOP budgets", dx: -12, dy: -26 },
-      { flops: 3e11, regret: 0.0, text: "oracle (knows g) — regret 0", dx: -12, dy: 22 },
+      { flops: 2.975e11, regret: 0.1606, text: "headline bar: 0.16 @ 3e11 — flat as compute grows", dx: 14, dy: -24 },
+      { flops: 2.371e12, regret: 0.0, text: "oracle (knows g) — regret 0", dx: -10, dy: -16 },
     ]}
   />
   <figcaption class="figcaption">
     Regret vs the $g$-knowing oracle (y, lower = better; 0 = the oracle) against total FLOPs (x, log
     scale), all train + eval-rollout FLOPs counted. The chosen
-    <span class="swatch transformer"></span>`transformer bar` reaches **≈ 0.16 regret / +0.77 reward** at
-    $\approx 3\times10^{11}$ FLOPs, and regret **plateaus** across the swept FLOP budgets (the
-    "tuning, not compute" finding — so only the chosen measured point is plotted, no invented FLOP-curve
-    coordinates). Forage regret is measured against a **different** oracle/env than chemotaxis, so it is
-    **never** co-ranked with the chemotaxis control candidates — its own rung, its own axis.
+    <span class="swatch transformer"></span>`transformer bar` headlines at **0.16 regret / +0.77 reward**
+    at $\approx 3\times10^{11}$ FLOPs (150 steps) and then **plateaus at ~0.16&ndash;0.19 over an ~8&times;
+    FLOP range** (350 / 700 / 1200 steps) — **more compute buys no regret**. That flat curve, against the
+    4&times; spread the sweep above opens at *fixed* compute, is the "tuning, not compute" finding shown
+    rather than asserted. Forage regret is measured against a **different** oracle/env than chemotaxis, so
+    it is **never** co-ranked with the chemotaxis control candidates — its own rung, its own axis.
   </figcaption>
 </figure>
 

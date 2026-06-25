@@ -203,19 +203,20 @@ transformer "can push regret to 0.141 only by spending 2.96×10¹² FLOPs (**16 
 correct). The C.A.2 page uses the arithmetically-correct **~7 OOM**; the "16 OOM" wording was flagged to
 Main rather than reproduced. No other numbers touched.
 
-**New (2026-06-25, B.5 + C.A.3 pages) — flagged for researcher confirmation (the PR is gated on it):**
-1. **C.A.3 forage oracle reward — the spec is internally inconsistent.** The researcher note and the
-   spec's "MC-pinned references" both give oracle **≈ +0.97** (≈ +1/step, the camp-`g` ceiling), but the
-   spec's *acceptance* "metric bounds (at production H=64)" give oracle **≈ +0.335**. I used the note's
-   **+0.97** (the task explicitly specified the note's reference table: oracle +0.97 / always_right 0 /
-   always_eat −0.33 / random −0.11 / WSLS +0.85). The +0.335 figure is **not** reproduced. Researcher to
-   confirm which oracle scale is canonical before publish.
-2. **C.A.3 transformer bar: regret 0.16 vs reward +0.77 doesn't close arithmetically.** Under the control
-   pages' regret = r̄_oracle − r̄_agent, oracle +0.97 − reward +0.77 = **0.20**, not the noted **0.16**
-   (plausibly per-episode regret averaging vs a difference of grand means, or MC noise). I presented the
-   note's numbers verbatim and did **not** assert the subtraction on the page. Researcher to confirm.
-3. **B.5 numbers all verified consistent** with the note + spec (kill-test 2.4376/2.4577/2.4427/2.4181,
-   KILL; delta_mix stays the 1.8485 bar). No B.5 science flagged.
+**New (2026-06-25, B.5 + C.A.3 pages) — RESOLVED 2026-06-25 by Main (researcher):**
+Main confirmed **both pages are accurate** — every B.5 and C.A.3 number/verdict checks out, and the
+deviations were the right calls (no co-rank; illustrative raster labeled honestly).
+1. **C.A.3 forage oracle reward — RESOLVED.** Oracle **+0.97** is canonical (the +0.335 in the spec's
+   acceptance bounds was stale); the page's note-sourced reference table stands.
+2. **regret 0.16 vs reward +0.77 — RESOLVED.** The gap is per-episode regret averaging (not a difference
+   of grand means), not an error; the page presents the figures verbatim, which is correct.
+3. **C.A.3 FLOP-budget curve UPGRADED.** Main supplied the *measured* chosen-config curve (4 points,
+   regret @ total-FLOPs: 0.1606@2.975e11 · 0.1865@6.925e11 · 0.1855@1.384e12 · 0.1768@2.371e12). The page
+   now **plots the real flat curve** (~0.16–0.19 over an ~8× FLOP range — compute buys no regret) instead
+   of one point + prose; `forageBaseline` is now a measured `kind:"curve"`, and the caption's
+   "only the chosen point plotted / no invented coordinate" caveat is dropped (these are real).
+4. **B.5 numbers verified consistent** (kill-test 2.4376/2.4577/2.4427/2.4181, KILL; delta_mix stays the
+   1.8485 bar). No B.5 science flagged.
 
 ## Changelog
 
@@ -569,5 +570,9 @@ Main rather than reproduced. No other numbers touched.
   - Build green (**24 pages**); verified from `file://` (zero console errors): B.5 chart mounts 4 marks +
     51 KaTeX + column-load HBars; C.A.3 chart mounts 1 mark + 37 KaTeX + 2 SignedBars (8 fills/zero lines)
     + the 16×16 ForageRaster (256 cells, 13 eat marks) + the sweep HBars; the landing map shows 13 leaves
-    on two rows with 4 dashed negatives + the legend, no overlaps, both new nodes link. Flagged two C.A.3
-    number questions to the researcher (above); B.5 numbers verified consistent.
+    on two rows with 4 dashed negatives + the legend, no overlaps, both new nodes link.
+  - **Follow-up (2026-06-25, post-review):** Main confirmed both pages accurate and supplied the *measured*
+    forage FLOP-budget curve → replaced `forageBaseline`'s single point with the 4 measured points
+    (`kind:"curve"`), so the C.A.3 RegretFlopChart now PLOTS the real ~0.16–0.19 plateau over ~8× FLOPs
+    (the "tuning, not compute" evidence shown, not asserted); caption + annotations updated, the
+    "no invented coordinate" caveat dropped, rebuilt green, pushed to PR #10. Flags above marked RESOLVED.

@@ -623,15 +623,21 @@ export const chemotaxisControl: Series[] = [controlBar, chemotaxisPoint];
 // (flat — the "tuning not compute" finding). The forage oracle (knows `g`, camps it) sits at regret 0.
 // IMPORTANT: forage regret is measured against a DIFFERENT oracle/env than chemotaxis, so it is NEVER
 // co-ranked with the chemotaxis control candidates (the spec writes forage to its own runs/ dir) — this
-// is its OWN series, plotted only on the C.A.3 page, never merged into `controlCandidates`. The 3–4
-// FLOP-budget points the sweep traced are not individually reported in the note, so only the chosen
-// measured point is plotted (no invented coordinate); the plateau is stated in the page caption.
+// is its OWN series, plotted only on the C.A.3 page, never merged into `controlCandidates`. The
+// FLOP-budget curve is MEASURED (researcher hand-off, 2026-06-25): four chosen-config points spanning an
+// ~8× FLOP range, regret flat at ~0.16–0.19 — compute does NOT buy regret here; tuning does. The chosen
+// config (lr=3e-3, wd=0, bs=32, ε=0.05) headlines at 0.1606 regret / +0.77 reward @ 2.975e11 (150 steps).
 export const forageBaseline: Series[] = [
   {
     id: "forage_bar",
     label: "transformer bar (best of 36-config sweep)",
     role: "transformer",
-    kind: "point",
-    points: [{ flops: 3e11, regret: 0.16, tag: "lr=3e-3, wd=0, bs=32, ε=0.05 — reward +0.77" }],
+    kind: "curve",
+    points: [
+      { flops: 2.975e11, regret: 0.1606, tag: "150 steps — the headline 0.16 bar (reward +0.77)" },
+      { flops: 6.925e11, regret: 0.1865, tag: "350 steps — more compute, no regret gain" },
+      { flops: 1.384e12, regret: 0.1855, tag: "700 steps" },
+      { flops: 2.371e12, regret: 0.1768, tag: "1200 steps — still ~0.18: the plateau" },
+    ],
   },
 ];
