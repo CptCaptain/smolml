@@ -51,7 +51,7 @@ def _rand_valid_tape(fcfg: ForageConfig, seed: int) -> list[int]:
     rng = np.random.default_rng(seed)
     obs_len = REWARD_LEVELS * fcfg.n_types
     toks = []
-    for i in range(fcfg.horizon):
+    for _i in range(fcfg.horizon):
         toks.append(int(rng.integers(obs_len)))
         toks.append(obs_len + int(rng.integers(N_ACTIONS)))
     return toks

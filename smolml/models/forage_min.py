@@ -60,10 +60,14 @@ from smolml.models.registry import DecodeState, LanguageModel, register_model
 # step). The world-model head's per-type and per-combined-symbol work scales with K.
 _LR_OPS = 4  # lr = sigmoid(lr_logit): neg, exp, +1, recip
 _DECODE_OPS = 3  # t = byte // 3 (1); rem = byte % 3 (1); r = rem - 1 (1)
-_UPDATE_OPS = 6  # gather v[t] (1); r - v[t] (1); lr * (.) (1); v[t] + (.) (1); EAT-gate (1); scatter (1)
+_UPDATE_OPS = (
+    6  # gather v[t] (1); r - v[t] (1); lr * (.) (1); v[t] + (.) (1); EAT-gate (1); scatter (1)
+)
 _VCUR_OPS = 1  # v_cur = v[current_type] : a gather for the heads
 _POLICY_OPS = 7  # eat = g*v_cur (1) + b_eat (1); left/right expand (2); stack-3 (3)
-_REW_OPS = 11  # gv = g_wm*v_cur (1), -gv (1); stack eat-row (3); stack move-row (3); where over 3 (3)
+_REW_OPS = (
+    11  # gv = g_wm*v_cur (1), -gv (1); stack eat-row (3); stack move-row (3); where over 3 (3)
+)
 _PER_TYPE_OPS = 3  # per type: one-hot build (1); * stick (1); where vs zeros (1)
 _PER_SYMBOL_OPS = 2  # per combined obs symbol: outer-sum add (1); final cat copy (1)
 
@@ -255,9 +259,7 @@ class ForageMin(LanguageModel):
 
         v_now = torch.tensor(new_st.v, dtype=dtype, device=device)
         v_cur = v_now[new_st.current_type]
-        type_onehot = F.one_hot(
-            torch.tensor(new_st.current_type, device=device), self.K
-        ).to(dtype)
+        type_onehot = F.one_hot(torch.tensor(new_st.current_type, device=device), self.K).to(dtype)
         last_action = torch.tensor(new_st.last_action, device=device)
         logits = self._emit_logits(v_cur, type_onehot, last_action)
         flops = self.decode_step_flops(state.length)

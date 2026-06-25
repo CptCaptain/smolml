@@ -24,7 +24,7 @@ from smolml.leaderboard import regenerate_control
 from smolml.models import build_model
 
 RUNS_DIR = "runs/forage"
-HORIZON = 32
+HORIZON = 64  # production horizon (matches the C.A.4 candidates + the test-pin metric bounds)
 MODEL = {"d_model": 64, "n_layers": 3, "n_heads": 4}  # fixed P (not swept)
 LR_GRID = (1e-3, 3e-3, 1e-2)
 WD_GRID = (0.0, 0.1)
