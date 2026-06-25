@@ -66,18 +66,22 @@ two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 
 | `Layout` | Page chrome: top bar, sticky sidebar nav, content column, "See also" rail, prev/next pager. Wrap MDX body in `<Layout …>`. The `scripts?: string[]` prop injects extra classic scripts (deferred, in document order) into `<head>` **before** `compendium.js` — the two model-demo pages use it to load the interactive-demo model layer (`/js/models/*.js`) so the widget runtime sees `SmolModels`/`SmolDemos` at mount. | `title`, `kicker?`, `blurb?`, `related?: {href,title}[]`, `landing?`, `scripts?` |
 | `Callout` | Styled aside. Variants: `note`, `insight` (the lesson), `caveat` (read honestly), `warning`. | `variant?`, `title?` |
 | `Pipeline` | Left-to-right flow of labeled stages + arrows, optional dashed feedback leg (online loops). | `steps: {label,sub?,accent?}[]`, `feedback?` |
-| `ConceptMap` | The landing's hand-laid SVG DAG; clickable nodes link every page (the navigational spine). Edges are smooth cubic-Bézier `<path>`s (orientation-aware control points, Δ=0.4·span) with arrowheads; the experiment "bus" stays orthogonal. | _(none; static data)_ |
+| `ConceptMap` | The landing's hand-laid SVG DAG (viewBox 960×800); clickable nodes link every page (the navigational spine). Concept edges are smooth cubic-Bézier `<path>`s (orientation-aware control points, Δ=0.4·span) with arrowheads. Experiments hang off the log on **two phase rows** (Space-B bytes; Space-C control + finding) so 13 leaves don't crowd; **negatives** (A.1, B.1, B.5, C.A.1) get a dashed, muted border (failures are first-class); an in-SVG **role-colour legend** (incl. column_mix + the dashed key) sits bottom-right. `role="img"` + aria-label kept. | _(none; static data)_ |
 | `CardGrid` | Responsive card grid over `NavItem[]` (landing + experiments index). | `items: NavItem[]` |
-| `HBars` | Horizontal labeled value bars: a row per bar, fill width ∝ a precomputed `pct`, value printed in the fill, colored by an `accent` class (`.genbar-fill.<accent>` in `global.css`). Caller sets the scale + says (in the caption) whether longer = better. Used by B.4 (delta-vs-abstain bpb, lower=shorter) + the C.A within-episode reward bars (higher=longer). | `bars: {label,pct,text,accent}[]` |
+| `HBars` | Horizontal labeled value bars (positive only): a row per bar, fill width ∝ a precomputed `pct`, value printed in the fill, colored by an `accent` class (`.genbar-fill.<accent>` in `global.css`). Caller sets the scale + says (in the caption) whether longer = better. **5 uses:** B.4 (delta-vs-abstain bpb, lower=shorter), C.A.1 + C.A.2 within-episode reward (higher=longer), B.5 per-column load, C.A.3 fair-sweep regret spread. | `bars: {label,pct,text,accent}[]` |
+| `SignedBars` | **Diverging** horizontal bars around a **zero baseline** — fill grows right of zero for positive values, left for negative; the signed value sits in its own right-hand column (legible even for a short bar). Caller fixes the `[min,max]` axis (must straddle 0). Styles in `global.css` (`.sbars-*`), beside HBars. Factored on its 2nd use (rule of two): C.A.3's reflex-proof reward comparison + within-episode learning curve, both of which span negative reward (HBars can't show them). | `bars: {label,value,text,accent}[]`, `min`, `max` |
+| `ForageRaster` | A **static** spacetime raster of one *illustrative* C.A.3 forage episode (rows=steps, cols=ring cells, cell colour=cue type, agent path + eat outcomes). No measured forage-rollout JSON ships in `public/`, so the episode is hand-authored — the rules made visible, captioned as such, **not** a measured trajectory. The three cue colours are forage-local (scoped style, not role tokens). Single-use, like `ControlRollout`. | _(none; illustrative data inline)_ |
 
 ### Data modules
 
 - `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`, `warm`, and the control roles
-  `reservoir` / `reservoir_plastic` / `chemotaxis`; `CurvePoint` carries optional `bpb?` **or**
+  `reservoir` / `reservoir_plastic` / `chemotaxis`, and the Space-B negative `column_mix`; `CurvePoint` carries optional `bpb?` **or**
   `regret?`) + datasets `firstFinding`, `contextMixingReference`, `prequentialBaseline`,
   `amortizedBaseline`, `freeUnigram`, `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2),
-  `hashedMixFull` (B.3), `deltaMix` + `deltaFull` (B.4), `controlCandidates` / `reservoirControl`
-  / `chemotaxisControl` (C.A, regret-vs-FLOP), and `demoByteModels` + `demoControlModels` (the two
+  `hashedMixFull` (B.3), `deltaMix` + `deltaFull` (B.4), `columnMix` (B.5 kill-test, bpb),
+  `controlCandidates` / `reservoirControl` / `chemotaxisControl` (C.A chemotaxis, regret-vs-FLOP),
+  `forageBaseline` (C.A.3 forage, regret-vs-FLOP — NEVER co-ranked with chemotaxis, a different oracle/env),
+  and `demoByteModels` + `demoControlModels` (the two
   live-demo HUD fact tables — params / FLOPs-per-step / role / refBpb, from the model-layer README),
   constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
@@ -124,11 +128,13 @@ two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses) + `RegretFlopChart` (3 uses) are two
+- **Rule of two (factored shared viz):** `BpbFlopChart` (14 uses) + `RegretFlopChart` (4 uses) are two
   thin markers over **one** `mountChart` routine (parametrized by an optional `metric` config; absent ⇒
-  the bpb defaults, so all 13 bpb charts are byte-unchanged). `HBars` (2 uses — factored from B.4's inline
-  `.genbars` two-bar, first use refactored, + the C.A reward bars), `Pipeline` (8), `CardGrid` (2),
-  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 16 chart instances, one
+  the bpb defaults). `HBars` (5 uses — B.4 + C.A.1/C.A.2 within-episode + B.5 column-load + C.A.3 sweep
+  spread), **`SignedBars`** (NEW — factored on its 2nd use: C.A.3's reflex-proof + within-episode reward
+  bars, which span negative and HBars can't show), **`ForageRaster`** (single-use illustrative spacetime
+  raster, like `ControlRollout` — rule of two not triggered), `Pipeline` (10), `CardGrid` (2),
+  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 18 chart instances, one
   stream scaffold serves both stream demos, and one `wireTransport` helper (+ shared `.demo-transport`
   button style) serves the two live model demos. The older bespoke transports in
   `mountStream`/`mountControlRollout` were left as-is (their scrub/loop semantics differ; not
@@ -162,11 +168,13 @@ two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 
 - **Concepts (9):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
   prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
   predictive-coding, online-warmup, in-context-control.
-- **Experiments (11 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
+- **Experiments (13 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
   context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
-  B.2-warmed-mixing, B.3-hashed-mix-full-corpus, B.4-delta-mix, C.A.1-reservoir-control,
-  C.A.2-chemotaxis-min-control, first-finding-pareto. The bpb pages render the shared interactive
-  `BpbFlopChart`; the two C.A control pages render `RegretFlopChart` (same routine, regret on y).
+  B.2-warmed-mixing, B.3-hashed-mix-full-corpus, B.4-delta-mix, B.5-column-mix,
+  C.A.1-reservoir-control, C.A.2-chemotaxis-min-control, C.A.3-contingency-forage,
+  first-finding-pareto. The bpb pages render the shared interactive `BpbFlopChart` (B.5's kill-test is
+  four matched-FLOP points stacked at one x); the three C.A control pages render `RegretFlopChart`
+  (same routine, regret on y).
   (One plot per page; B.2 is the lone two-plot page — Phase 1 + Phase 2 are distinct experiments;
   harness PNGs stay as artifacts under `experiments/`, not embedded — session 6.)
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
@@ -194,6 +202,21 @@ transformer "can push regret to 0.141 only by spending 2.96×10¹² FLOPs (**16 
 2.96×10¹² ÷ 2.70×10⁵ ≈ 1.1×10⁷, i.e. **~7 OOM**, not 16 (the cheapest-point gap is ~6 OOM, also stated and
 correct). The C.A.2 page uses the arithmetically-correct **~7 OOM**; the "16 OOM" wording was flagged to
 Main rather than reproduced. No other numbers touched.
+
+**New (2026-06-25, B.5 + C.A.3 pages) — RESOLVED 2026-06-25 by Main (researcher):**
+Main confirmed **both pages are accurate** — every B.5 and C.A.3 number/verdict checks out, and the
+deviations were the right calls (no co-rank; illustrative raster labeled honestly).
+1. **C.A.3 forage oracle reward — RESOLVED.** Oracle **+0.97** is canonical (the +0.335 in the spec's
+   acceptance bounds was stale); the page's note-sourced reference table stands.
+2. **regret 0.16 vs reward +0.77 — RESOLVED.** The gap is per-episode regret averaging (not a difference
+   of grand means), not an error; the page presents the figures verbatim, which is correct.
+3. **C.A.3 FLOP-budget curve UPGRADED.** Main supplied the *measured* chosen-config curve (4 points,
+   regret @ total-FLOPs: 0.1606@2.975e11 · 0.1865@6.925e11 · 0.1855@1.384e12 · 0.1768@2.371e12). The page
+   now **plots the real flat curve** (~0.16–0.19 over an ~8× FLOP range — compute buys no regret) instead
+   of one point + prose; `forageBaseline` is now a measured `kind:"curve"`, and the caption's
+   "only the chosen point plotted / no invented coordinate" caveat is dropped (these are real).
+4. **B.5 numbers verified consistent** (kill-test 2.4376/2.4577/2.4427/2.4181, KILL; delta_mix stays the
+   1.8485 bar). No B.5 science flagged.
 
 ## Changelog
 
@@ -507,3 +530,49 @@ Main rather than reproduced. No other numbers touched.
     validate if the contract is reused. (b) Pre-existing across **all** charts: marks are `role="button"` +
     `tabindex` but have no Enter/Space activation handler (toggle is click / legend only) — an a11y gap not
     introduced here.
+- **2026-06-25 (session 14 — B.5 column_mix + C.A.3 forage pages + concept-map polish):** authored two
+  experiment pages from the researcher note (PRs #8, #9) and gave the landing concept-map a polish pass.
+  **B.5 `column_mix`** (mirrors B.4): a clean Source-(iv) **negative** — routing one delta predictor into
+  `C` columns (an MoE-of-deltas) is Pareto-hollow on byte prediction. The bet (sheet-of-one → `C` routed
+  columns; capacity-is-illusory since a sparse read is `O(sV)` regardless of `d`; the only real lever is
+  route-conditional *selection*, a multiplicative interaction); the lever provably EXISTS (synthetic
+  interaction source: `C>1` beats `C=1`, capacity can't fake it) but doesn't PAY (matched-FLOP kill-test:
+  bar 2.4376 / learned 2.4577 / gate-off 2.4427 / **matched-capacity control 2.4181** → KILL, capacity
+  beats selection); the per-column-load diagnostic (~25% even, no specialization); `delta_mix` stays the
+  **1.8485** bar. Viz: the 4 matched-FLOP points on `BpbFlopChart` (stacked at one x, tight 2.41–2.46 y;
+  the two lowest are both `delta_mix` orange — the point) + an `HBars` column-load + the EXISTS/PAYS
+  contrast in two `Callout`s. **C.A.3 `forage`** (mirrors C.A.1/C.A.2): the **reflex-proof** control rung
+  that closes C.A.0's gameable-by-reflex gap. Why (chemotaxis was reflex-gameable); the mechanism
+  (stationary ring, latent good type `g`, poison −1, EAT-in-place → camping `g` = +1/step = the valid
+  oracle; combined `(type,last_reward)` obs on the 2-token tape); the env-design lesson vignette (two
+  review-caught broken designs — refresh-farming and bounce-camp — both MC-fixed); the reference table
+  (oracle +0.97 / source WSLS +0.85 / always_right 0 / random −0.11 / always_eat −0.33); the fair-baseline
+  lesson (36-config sweep, regret 0.15–0.65, tuning>compute, bar ≈0.16 @ 3e11); the realized `Environment`
+  seam. Viz: the reflex-proof reward bars + within-episode learning curve on the **new `SignedBars`**, the
+  fair-sweep regret spread on `HBars`, the forage transformer bar on `RegretFlopChart`, and an
+  illustrative episode on the **new `ForageRaster`**.
+  - **New role/token:** `column_mix` = muted slate `--c-column` (#7d8794) across `curves.ts` `SeriesRole`,
+    `compendium.js` `ROLE_COLOR`, `global.css` (token + `.swatch` + `.genbar-fill`), and `ConceptMap`
+    (`role-column_mix` + the legend). Negatives stay *muted*, not vivid — the routing is overhead.
+  - **New components (rule of two):** `SignedBars` factored on its 2nd use (reflex-proof + within-episode,
+    both span negative reward); `ForageRaster` single-use (like `ControlRollout`; no measured rollout JSON
+    ships, so the episode is hand-authored and captioned **illustrative — not a measured rollout**).
+  - **New data:** `columnMix` (4 kill-test points, all at matched ≈1.07e10) + `forageBaseline` (the one
+    measured bar point; the swept FLOP-budget plateau is stated, not plotted — no invented coordinate;
+    forage regret is NEVER merged into the chemotaxis `controlCandidates`, per the spec's no-co-rank rule).
+  - **Concept-map polish:** relaid the 13-leaf experiment bus into two phase rows (de-crowds), added the
+    B.5 (slate, negative) + C.A.3 (control rung) nodes, gave all four negatives (A.1, B.1, B.5, C.A.1) a
+    dashed/muted border, added an in-SVG role legend (covers column_mix), row labels, tidier routing; kept
+    `role="img"` + a fuller aria-label; bumped the viewBox to 960×800 (still `width:100%` responsive).
+  - **Wiring:** `nav.ts` (EXP B.5 after B.4, EXP C.A.3 after C.A.2; experiments index auto-renders the
+    cards); reciprocal See-also/related: B.4 ↔ B.5, in-context-control ↔ C.A.3 (+ a "realized next rung"
+    section), C.A.2 ↔ C.A.3.
+  - Build green (**24 pages**); verified from `file://` (zero console errors): B.5 chart mounts 4 marks +
+    51 KaTeX + column-load HBars; C.A.3 chart mounts 1 mark + 37 KaTeX + 2 SignedBars (8 fills/zero lines)
+    + the 16×16 ForageRaster (256 cells, 13 eat marks) + the sweep HBars; the landing map shows 13 leaves
+    on two rows with 4 dashed negatives + the legend, no overlaps, both new nodes link.
+  - **Follow-up (2026-06-25, post-review):** Main confirmed both pages accurate and supplied the *measured*
+    forage FLOP-budget curve → replaced `forageBaseline`'s single point with the 4 measured points
+    (`kind:"curve"`), so the C.A.3 RegretFlopChart now PLOTS the real ~0.16–0.19 plateau over ~8× FLOPs
+    (the "tuning, not compute" evidence shown, not asserted); caption + annotations updated, the
+    "no invented coordinate" caveat dropped, rebuilt green, pushed to PR #10. Flags above marked RESOLVED.

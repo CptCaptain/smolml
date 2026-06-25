@@ -18,6 +18,7 @@ export type SeriesRole =
   | "reservoir" // C.A.1 echo-state reservoir + distilled-frozen readout (control rung; periwinkle --c-reservoir)
   | "reservoir_plastic" // C.A.1b reservoir + online plastic readout (control rung; lavender --c-plastic, same family)
   | "chemotaxis" // C.A.2 chemotaxis_min — 5 hand-coded run-and-tumble scalars (control rung; teal --c-chemo)
+  | "column_mix" // B.5 column_mix — routed sheet of delta columns, a Space-B NEGATIVE (slate-gray --c-column; muted: the routing is overhead)
   | "neutral";
 
 export interface CurvePoint {
@@ -422,6 +423,56 @@ export const deltaFull: Series[] = [
   },
 ];
 
+// ── B.5: column_mix matched-FLOP kill-test (real enwik8, 4 MB slice, total ≈1.07e10, C=4) ──
+// Source: the researcher note (PR #8 column_mix); spec docs/tasks/B.5-column-mix.md. A clean
+// Source-(iv) NEGATIVE: routing one delta predictor into C columns (an MoE-of-deltas, gated by a
+// cheap online bandit) is Pareto-hollow on byte prediction — delta_mix stays the bar. The kill-test
+// runs four entrants at MATCHED total FLOPs (≈1.07e10) and asks routing to earn its keep as
+// *selection*, not capacity:
+//   (a) delta_mix (C=1, the bar)                          → fast_weight (orange)   2.4376
+//   (b) column_mix, learned gate (gate_lr>0, ε>0)         → column_mix (slate)     2.4577
+//   (c) column_mix, gate-off (fixed hash route)           → neutral (gray)         2.4427
+//   (d) matched-capacity control: delta_mix @ delta_dim=C·d → fast_weight (orange) 2.4181  ← LOWEST
+// KILL: the best routed config (c, 2.4427) loses to BOTH the bar (a, 2.4376) AND the matched-capacity
+// control (d, 2.4181). The same FLOPs spent on one bigger SHARED table beat PARTITIONING it across
+// routes — capacity > selection. (a) and (d) are both delta_mix (same orange family — the point: the
+// two lowest points ARE delta_mix), so the routed column_mix sits above its own parent. The learned
+// gate (b) is even worse than gate-off (c): the bandit added noise. Diagnostics (note): ~25% even
+// column load (no specialization; each column starved to 1/C the data → under-converged). Cross-vendor
+// (gpt-5.5) FLOP audit found no undercharge — the kill rests on a fair comparison. All four are lone
+// MEASURED points at the matched budget (kind:"point"), stacked at one x (matched FLOPs carry no x
+// information — the vertical bpb spread, ~0.04, is the whole story; tight yMin/yMax in the page).
+export const columnMix: Series[] = [
+  {
+    id: "delta_bar",
+    label: "delta_mix — the bar (C=1)",
+    role: "fast_weight",
+    kind: "point",
+    points: [{ flops: 1.07e10, bpb: 2.4376, tag: "the incumbent: one shared delta stream" }],
+  },
+  {
+    id: "column_learned",
+    label: "column_mix — learned gate",
+    role: "column_mix",
+    kind: "point",
+    points: [{ flops: 1.07e10, bpb: 2.4577, tag: "C=4 routed columns, online bandit gate" }],
+  },
+  {
+    id: "column_gateoff",
+    label: "column_mix — gate-off (hash route)",
+    role: "neutral",
+    kind: "point",
+    points: [{ flops: 1.07e10, bpb: 2.4427, tag: "C=4, fixed hash route (no learning)" }],
+  },
+  {
+    id: "delta_matched_capacity",
+    label: "delta_mix — matched capacity (delta_dim=C·d)",
+    role: "fast_weight",
+    kind: "point",
+    points: [{ flops: 1.07e10, bpb: 2.4181, tag: "one bigger SHARED table — capacity beats selection" }],
+  },
+];
+
 // ── Interactive-demo model layer — HUD facts (params + per-step FLOPs) ────────
 // The single source of truth for the two runnable in-page demos' HUD readouts,
 // transcribed verbatim from the demo model layer's engineer→docs-builder handoff
@@ -560,3 +611,33 @@ export const controlCandidates: Series[] = [controlBar, reservoirCurve, reservoi
 export const reservoirControl: Series[] = [controlBar, reservoirCurve, reservoirPlasticPoint];
 // chemotaxis_min experiment page: the bar vs the FLOP-floor winner.
 export const chemotaxisControl: Series[] = [controlBar, chemotaxisPoint];
+
+// ── C.A.3: forage — the reflex-proof control rung (transformer bar) ───────────
+// Source: the researcher note (PR #9 forage rung); spec docs/tasks/C.A.3-contingency-forage.md.
+// ForageEnv closes C.A.0's gameable-by-reflex gap: a stationary ring whose optimal policy depends on
+// a per-episode latent good cue type `g` the agent can only learn from its own eat-outcomes, so NO
+// fixed reflex is near-optimal and in-context learning is REQUIRED. The honest transformer bar is the
+// BEST of a 36-config training-hyperparameter sweep at fixed params (regret ranged 0.15→0.65 across
+// the sweep — tuning, not compute, is the lever); the chosen config (lr=3e-3, wd=0, bs=32, ε=0.05)
+// reaches ≈0.16 regret / +0.77 reward @ ~3e11 FLOPs, and regret PLATEAUS across the swept FLOP budgets
+// (flat — the "tuning not compute" finding). The forage oracle (knows `g`, camps it) sits at regret 0.
+// IMPORTANT: forage regret is measured against a DIFFERENT oracle/env than chemotaxis, so it is NEVER
+// co-ranked with the chemotaxis control candidates (the spec writes forage to its own runs/ dir) — this
+// is its OWN series, plotted only on the C.A.3 page, never merged into `controlCandidates`. The
+// FLOP-budget curve is MEASURED (researcher hand-off, 2026-06-25): four chosen-config points spanning an
+// ~8× FLOP range, regret flat at ~0.16–0.19 — compute does NOT buy regret here; tuning does. The chosen
+// config (lr=3e-3, wd=0, bs=32, ε=0.05) headlines at 0.1606 regret / +0.77 reward @ 2.975e11 (150 steps).
+export const forageBaseline: Series[] = [
+  {
+    id: "forage_bar",
+    label: "transformer bar (best of 36-config sweep)",
+    role: "transformer",
+    kind: "curve",
+    points: [
+      { flops: 2.975e11, regret: 0.1606, tag: "150 steps — the headline 0.16 bar (reward +0.77)" },
+      { flops: 6.925e11, regret: 0.1865, tag: "350 steps — more compute, no regret gain" },
+      { flops: 1.384e12, regret: 0.1855, tag: "700 steps" },
+      { flops: 2.371e12, regret: 0.1768, tag: "1200 steps — still ~0.18: the plateau" },
+    ],
+  },
+];

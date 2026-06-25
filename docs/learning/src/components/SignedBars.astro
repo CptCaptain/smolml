@@ -1,0 +1,54 @@
+---
+// Diverging horizontal bars around a zero baseline: a row per bar, the fill
+// growing RIGHT of zero for positive values and LEFT for negative ones, the
+// signed value printed in its own right-hand column (always legible, even for a
+// short bar). The caller fixes the value axis [min, max] (it must straddle 0)
+// and says in the figcaption which direction is better. Factored on its second
+// use (rule of two, PROCESS.md): the C.A.3 forage page needs signed reward bars
+// twice — the reflex-proof comparison (oracle …→ poison reflex, values span
+// negative) and the within-episode learning curve (source halves vs a negative
+// floor) — neither of which the positive-only HBars can show. Styles live in
+// global.css (`.sbars-*`) so the convention sits beside HBars'.
+interface Bar {
+  /** left-hand row label. */
+  label: string;
+  /** signed value (e.g. mean reward), clamped to [min, max]. */
+  value: number;
+  /** text printed in the value column, e.g. "+0.97" or "−0.33". */
+  text: string;
+  /** accent class suffix → `.sbars-fill.<accent>` in global.css. */
+  accent: string;
+}
+interface Props {
+  bars: Bar[];
+  /** value-axis bounds; MUST straddle 0 (min < 0 < max) so the zero line shows. */
+  min: number;
+  max: number;
+}
+const { bars, min, max } = Astro.props;
+const span = max - min;
+const zeroPct = ((0 - min) / span) * 100;
+const rows = bars.map((b) => {
+  const v = Math.min(max, Math.max(min, b.value));
+  const valPct = ((v - min) / span) * 100;
+  // positive: from the zero line rightward; negative: from the value leftward to zero.
+  const left = v >= 0 ? zeroPct : valPct;
+  const width = Math.abs(valPct - zeroPct);
+  return { ...b, left, width };
+});
+---
+
+<div class="sbars">
+  {
+    rows.map((r) => (
+      <div class="sbars-row">
+        <span class="sbars-label">{r.label}</span>
+        <span class="sbars-track">
+          <span class="sbars-zero" style={`left:${zeroPct}%`} />
+          <span class={`sbars-fill ${r.accent}`} style={`left:${r.left}%;width:${r.width}%`} />
+        </span>
+        <span class="sbars-val">{r.text}</span>
+      </div>
+    ))
+  }
+</div>

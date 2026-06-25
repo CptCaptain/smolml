@@ -45,6 +45,8 @@
   --c-reservoir: #8f86d6;
   --c-plastic: #b3a4e8;
   --c-chemo: #3aa890;
+  /* B.5 column_mix — a Space-B NEGATIVE; muted slate-gray (the routing is overhead, not a win) */
+  --c-column: #7d8794;
   --c-neutral: #9a8e76;
 
   /* type */
@@ -342,6 +344,9 @@ blockquote {
 }
 .swatch.chemotaxis {
   background: var(--c-chemo);
+}
+.swatch.column_mix {
+  background: var(--c-column);
 }
 
 /* responsive */
@@ -646,7 +651,28 @@ blockquote {
 .genbar-fill.neutral { background: var(--c-neutral); }
 .genbar-fill.reservoir_plastic { background: var(--c-plastic); }
 .genbar-fill.chemotaxis { background: var(--c-chemo); }
+.genbar-fill.column_mix { background: var(--c-column); }
+.genbar-fill.fast_weight { background: var(--c-fast); }
+.genbar-fill.transformer { background: var(--c-transformer); }
 @media (max-width: 640px) { .genbar-row { grid-template-columns: 8.5rem 1fr; } }
+
+/* diverging signed bars around a zero baseline (C.A.3 forage: signed reward —
+   reflex-proof comparison + within-episode curve; values span negative). */
+.sbars { margin: 1.5em 0 0.5em; display: flex; flex-direction: column; gap: 0.55rem; }
+.sbars-row { display: grid; grid-template-columns: 13rem 1fr 3.4rem; align-items: center; gap: 0.8rem; }
+.sbars-label { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); text-align: right; }
+.sbars-track { position: relative; background: var(--ink-2); border: 1px solid var(--line); border-radius: 5px; height: 1.85rem; overflow: hidden; }
+.sbars-zero { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--faint); z-index: 1; }
+.sbars-fill { position: absolute; top: 3px; bottom: 3px; border-radius: 3px; min-width: 2px; }
+.sbars-val { font-family: var(--font-mono); font-size: 0.82rem; font-weight: 600; color: var(--paper-dim); text-align: left; }
+.sbars-fill.accent { background: var(--accent); }
+.sbars-fill.reference { background: var(--c-reference); }
+.sbars-fill.transformer { background: var(--c-transformer); }
+.sbars-fill.chemotaxis { background: var(--c-chemo); }
+.sbars-fill.reservoir_plastic { background: var(--c-plastic); }
+.sbars-fill.column_mix { background: var(--c-column); }
+.sbars-fill.neutral { background: var(--c-neutral); }
+@media (max-width: 640px) { .sbars-row { grid-template-columns: 8rem 1fr 3rem; } }
 
 /* ── interactive-demo widgets (run the live model layer) ─────────────────── */
 /* shared transport + error notice (byte race + cursor chase) */

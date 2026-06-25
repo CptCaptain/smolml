@@ -142,6 +142,13 @@ export const experiments: NavItem[] = [
     kicker: "EXP B.4",
   },
   {
+    slug: "B.5-column-mix",
+    href: "/experiments/B.5-column-mix",
+    title: "B.5 — column_mix (routed delta sheet)",
+    blurb: "A clean Source-(iv) negative: routing delta columns is Pareto-hollow — capacity beats selection, delta_mix stays the bar.",
+    kicker: "EXP B.5",
+  },
+  {
     slug: "C.A.1-reservoir-control",
     href: "/experiments/C.A.1-reservoir-control",
     title: "C.A.1 — reservoir control candidates",
@@ -154,6 +161,13 @@ export const experiments: NavItem[] = [
     title: "C.A.2 — chemotaxis_min (the FLOP-floor win)",
     blurb: "Five hand-coded run-and-tumble scalars beat the transformer bar on the FLOP axis — exposing the rung's stationarity limit.",
     kicker: "EXP C.A.2",
+  },
+  {
+    slug: "C.A.3-contingency-forage",
+    href: "/experiments/C.A.3-contingency-forage",
+    title: "C.A.3 — contingency forage (reflex-proof rung)",
+    blurb: "The first control rung that requires in-context learning — no fixed reflex wins, so regret finally measures it. Plus a fairly-tuned transformer bar and the realized Environment seam.",
+    kicker: "EXP C.A.3",
   },
   {
     slug: "first-finding-pareto",

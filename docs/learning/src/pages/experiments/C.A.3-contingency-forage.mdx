@@ -1,0 +1,276 @@
+---
+title: C.A.3 — contingency forage (the reflex-proof control rung)
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import Pipeline from "../../components/Pipeline.astro";
+import RegretFlopChart from "../../components/RegretFlopChart.astro";
+import SignedBars from "../../components/SignedBars.astro";
+import HBars from "../../components/HBars.astro";
+import ForageRaster from "../../components/ForageRaster.astro";
+import { forageBaseline } from "../../data/curves";
+
+<Layout
+  title="C.A.3 — contingency forage (the reflex-proof control rung)"
+  kicker="EXP C.A.3"
+  blurb="The first control rung that REQUIRES in-context learning: a stationary ring where the optimal action depends on a per-episode latent the agent can only learn from its own eat-outcomes. No fixed reflex is near-optimal, so regret finally measures the thing we care about — plus a fairly-tuned transformer bar (~0.16 regret) and the realized Environment seam."
+  related={[
+    { href: "/concepts/in-context-control", title: "In-context control & chemotaxis" },
+    { href: "/experiments/C.A.2-chemotaxis-min-control", title: "C.A.2 — chemotaxis_min (the FLOP-floor win it answers)" },
+    { href: "/experiments/C.A.1-reservoir-control", title: "C.A.1 — reservoir control candidates" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+  ]}
+>
+
+<Callout variant="insight" title="a rung where no fixed reflex can win">
+[Chemotaxis (C.A.0)](/concepts/in-context-control) was gameable: its optimum is a **fixed reflex** —
+climb the local gradient — so [`chemotaxis_min`](/experiments/C.A.2-chemotaxis-min-control), a weightless
+leaky integrator, floored the FLOPs and "won" without learning. **Forage closes that gap.** The optimal
+policy depends on a **per-episode latent** the agent can only learn from its own eat-outcomes, so no
+fixed policy is near-optimal — **in-context learning is required**, and regret finally measures *that*.
+</Callout>
+
+**Status:** infrastructure + a fairly-tuned transformer baseline — **not a candidate** (the brain-style
+local-learning candidate scored on this rung is the follow-on, mirroring C.A.0 → C.A.1/C.A.2). This PR
+also **realized the `Environment` seam** the [control concept](/concepts/in-context-control) had only
+sketched. **Answers:** [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control), whose
+FLOP-floor win exposed C.A.0's stationarity limit. **Concepts:**
+[in-context control](/concepts/in-context-control), [Source-(iv)](/concepts/source-iv-advantage),
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws),
+[prequential evaluation](/concepts/prequential-evaluation).
+
+## Why this rung — the C.A.0 gap, fixed
+
+`ChemoEnv`'s optimal policy is "climb the local gradient." A rate-agnostic reactor clears every held-out
+drift rate without inferring anything, so the rung never separated a *learner* from a clever fixed
+reaction — the [`chemotaxis_min`](/experiments/C.A.2-chemotaxis-min-control) result was exactly this
+embarrassment. `ForageEnv` makes the optimum depend on a **latent the agent cannot know a priori**, so
+the only thing that generalizes is the *inference algorithm* — "eat the type that pays, skip the type
+that poisons."
+
+## The environment — `ForageEnv`
+
+A stationary ring of $W = 16$ cells. **Every cell holds a cue of one of $K = 3$ types**, sampled
+i.i.d. uniform at episode start and **fixed thereafter**. Exactly one type $g$ is **good** this episode,
+drawn uniform per episode; $g$ and the layout are **fresh every episode** (train/eval seed bands
+disjoint), so there is **no fixed mapping to memorize**. The agent at position $p$ senses only its own
+cell's type. Actions are `LEFT`, `EAT`, `RIGHT`.
+
+- **`EAT` eats in place** (the agent does not move; the cell is re-eatable): reward $+1$ if the cell's
+  type $== g$, else $-1$ — **poison**. `LEFT`/`RIGHT` move without eating (reward $0$).
+
+<Pipeline
+  steps={[
+    { label: "sense", sub: "cue type at my cell", accent: "accent" },
+    { label: "infer g", sub: "from my own eat-outcomes", accent: "reference" },
+    { label: "act", sub: "LEFT / EAT / RIGHT", accent: "transformer" },
+    { label: "reward", sub: "+1 if type = g, −1 poison, 0 to move" },
+  ]}
+  feedback="in-context: no weight update — infer which type pays from the poison/reward history on the tape so far"
+/>
+
+### The math — why these exact dynamics
+
+Two properties are load-bearing, and **both were Monte-Carlo verified**:
+
+- **Poison ($-1$) makes blind eating net-negative.** Eat without knowing $g$ and the expected reward is
+  $\frac{1 - (K-1)}{K} = \frac{2-K}{K} = -\tfrac13$ at $K=3$. So a weightless `always-EAT` **cannot** win
+  — the rung is **reflex-proof**.
+- **Stationary cells + eat-in-place make camping $g$ the optimum.** Once the agent identifies a $g$ cell,
+  staying and eating it yields $+1$ **every step** — the per-step ceiling. That makes the **$g$-knowing
+  oracle a valid upper bound** (regret $\ge 0$), while food **never depletes** (cells never change), so a
+  learner can improve *within* the episode — the rung is **distillable**.
+
+The obs symbol encodes **both** the current cue type **and** the last reward —
+$\text{obs} = \text{type}\cdot 3 + (\text{last\_reward}+1)$, with $\text{last\_reward}\in\{-1,0,+1\}$ — so
+the policy always sees the current type *and* the reward signal stays in-context, on the **same 2-token**
+`obs · action · obs · action` tape chemotaxis uses (vocab $= 3K+3 = 12$: obs $0\ldots3K{-}1$, actions
+above). No scorer-schedule change.
+
+## See one episode
+
+<ForageRaster />
+
+## The env-design lesson — "reflex-proof" is a property you must *prove*
+
+Getting a reflex-proof **and** non-depleting **and** valid-oracle environment is hard, and adversarial
+review caught **two would-have-shipped-broken designs** — both with the *same* failure as C.A.0
+(a fixed reflex beats the "oracle," so regret goes negative and measures nothing):
+
+<Callout variant="caveat" title="two broken designs, both caught by review">
+1. **First dynamics (reward $\{0, +1\}$, `EAT` refreshes the cell to a random type).** The **4-lens spec
+   review** Monte-Carlo-proved that `always-EAT` **farms the refresh** at rate $1/K$ and *beats* the
+   oracle → **negative regret** (C.A.0's failure again). **Fix: poison $-1$** so blind eating is
+   net-negative.
+2. **An `EAT`-advances variant.** The **cross-vendor codex (gpt-5.5) review** caught a **bounce-camp**
+   exploit — eat $g$, step `LEFT` back onto it, eat again — that beats the traverse-oracle, making the
+   regret reference **invalid**. **Fix: `EAT` eats in place** (re-eatable, no movement).
+
+Both fixes were MC-verified. The lesson generalizes: **reflex-proof is a property you must *prove* by
+Monte-Carlo, not assert** — exactly the discipline C.A.0 lacked.
+</Callout>
+
+## Reference policies — the reflex is *below* random, the source approaches the oracle
+
+Monte-Carlo mean per-step reward ($W=16$, $K=3$, $H=64$), across the policy family. This is the headline
+that says the rung works: the blind reflex (`always_eat`) sits **below random**, while the
+within-episode learner (`win_stay_lose_shift`) climbs nearly to the $g$-knowing oracle.
+
+<figure class="figure">
+  <SignedBars
+    min={-0.5}
+    max={1.0}
+    bars={[
+      { label: "oracle (knows g, camps it)", value: 0.97, text: "+0.97", accent: "accent" },
+      { label: "win_stay_lose_shift (source)", value: 0.85, text: "+0.85", accent: "reference" },
+      { label: "always_right (best blind fixed)", value: 0.0, text: "0.00", accent: "neutral" },
+      { label: "random", value: -0.11, text: "−0.11", accent: "neutral" },
+      { label: "always_eat (the reflex)", value: -0.33, text: "−0.33", accent: "neutral" },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Mean per-step reward (higher = better; the vertical line is 0). The
+    <span class="swatch" style="background:var(--accent)"></span>`oracle` ($\approx +0.97 \approx +1$/step)
+    is the regret-0 ceiling. The <span class="swatch reference"></span>`win_stay_lose_shift` source
+    reaches **+0.85**, close behind. Every contingency-blind fixed policy is at or below 0:
+    `always_right` (the *best* blind fixed policy) is **0.00**, `random` is **−0.11**, and the
+    blind-eating reflex `always_eat` is **−0.33** — **below random**. No fixed reflex is near-optimal, so
+    regret is purely the cost of not knowing $g$.
+  </figcaption>
+</figure>
+
+The source is a genuine **within-episode learner** — it explores by eating early and exploits $g$ late:
+
+<figure class="figure">
+  <SignedBars
+    min={-0.3}
+    max={1.0}
+    bars={[
+      { label: "source — 1st half of episode", value: 0.79, text: "+0.79", accent: "reference" },
+      { label: "source — 2nd half of episode", value: 0.91, text: "+0.91", accent: "reference" },
+      { label: "random floor", value: -0.11, text: "−0.11", accent: "neutral" },
+    ]}
+  />
+  <figcaption class="figcaption">
+    `win_stay_lose_shift` within-episode mean reward (higher = better). The
+    <span class="swatch reference"></span>second half (**+0.91**) beats the first (**+0.79**): the source
+    **explores early and exploits $g$ late**, and both halves tower over the
+    <span class="swatch neutral"></span>random floor (**−0.11**). This is the learning curve Algorithm
+    Distillation copies into the transformer — a fixed reflex has no such climb.
+  </figcaption>
+</figure>
+
+## The fair baseline — the bar is the best of a sweep, not one config
+
+A transformer distill-train on this rung is **fast** (≈ 15 s – 2 min) and regret **plateaus on FLOPs
+alone** — so *tuning, not compute, is the lever*. An un-swept single config would be a strawman; the
+honest bar is the **best of a training-hyperparameter sweep at fixed params**. A **36-config** sweep
+(lr × weight_decay × batch × $\varepsilon$) gave regret ranging from **0.15 to 0.65**:
+
+<figure class="figure">
+  <HBars
+    bars={[
+      { label: "sweep best config", pct: 21.4, text: "0.15", accent: "neutral" },
+      { label: "chosen config (lr 3e-3, wd 0, bs 32, ε 0.05)", pct: 22.9, text: "0.16", accent: "transformer" },
+      { label: "sweep worst config", pct: 92.9, text: "0.65", accent: "neutral" },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Held-out regret across the 36-config sweep (lower = better, so **shorter = better**; bars scaled to a
+    0.70 axis). The spread is **4×** — from **0.15** to **0.65** — at the *same* params and budget, so
+    **tuning, not compute, is the lever**. The
+    <span class="swatch transformer"></span>chosen config (lr 3e-3, wd 0, bs 32, ε 0.05) sits at **0.16**,
+    a hair above the sweep's best — the bar an honest comparison must use.
+  </figcaption>
+</figure>
+
+<figure class="figure">
+  <RegretFlopChart
+    series={forageBaseline}
+    yMin={0}
+    yMax={0.5}
+    annotations={[
+      { flops: 2.975e11, regret: 0.1606, text: "headline bar: 0.16 @ 3e11 — flat as compute grows", dx: 14, dy: -24 },
+      { flops: 2.371e12, regret: 0.0, text: "oracle (knows g) — regret 0", dx: -10, dy: -16 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Regret vs the $g$-knowing oracle (y, lower = better; 0 = the oracle) against total FLOPs (x, log
+    scale), all train + eval-rollout FLOPs counted. The chosen
+    <span class="swatch transformer"></span>`transformer bar` headlines at **0.16 regret / +0.77 reward**
+    at $\approx 3\times10^{11}$ FLOPs (150 steps) and then **plateaus at ~0.16&ndash;0.19 over an ~8&times;
+    FLOP range** (350 / 700 / 1200 steps) — **more compute buys no regret**. That flat curve, against the
+    4&times; spread the sweep above opens at *fixed* compute, is the "tuning, not compute" finding shown
+    rather than asserted. Forage regret is measured against a **different** oracle/env than chemotaxis, so
+    it is **never** co-ranked with the chemotaxis control candidates — its own rung, its own axis.
+  </figcaption>
+</figure>
+
+<Callout variant="insight" title="tuning, not compute, is the lever">
+The 4× regret spread across hyperparameters at fixed params and budget — while the FLOP curve is **flat**
+— is the whole reason the bar must be the best of a sweep. Reporting one arbitrary config could have
+quietly handed a candidate a 0.5-regret strawman to beat. The chosen **0.16** is the honest target a
+local-learning candidate must clear.
+</Callout>
+
+## The realized `Environment` seam
+
+This rung also paid down infrastructure debt: `evaluate_control`, `make_distillation_batch`, and
+`distill_train_run` were **hardcoded** to `ChemoEnv`. They now run on a small **`EnvSpec`** bundle
+(`env_factory` + `source_factory` + a `tape_spec` of vocab/slices), so:
+
+<Pipeline
+  steps={[
+    { label: "Environment", sub: "reset / step / oracle / record_state", accent: "accent" },
+    { label: "EnvSpec", sub: "env + source + tape slices" },
+    { label: "evaluate_control", sub: "protocol-only regret loop", accent: "transformer" },
+    { label: "new rung", sub: "drop in an Environment + EnvSpec" },
+  ]}
+/>
+
+Chemotaxis is **instance #1**, forage **#2**, and chemotaxis was kept **bit-identical** — a new
+end-to-end pin test asserts its regret / reward / world-model bits / FLOPs are unchanged after the
+refactor (drift would be invisible to FLOPs otherwise). New rungs now drop in by shipping an
+`Environment` + its `EnvSpec` — no scorer or harness surgery.
+
+## What we learned
+
+1. **Reflex-proof must be proven, not assumed.** Two plausible designs each let a fixed reflex beat the
+   oracle (negative regret); only Monte-Carlo proof — across the whole fixed-policy family — established
+   that poison + eat-in-place actually require in-context learning.
+2. **The bar is a sweep, not a config.** With regret flat on FLOPs but spanning 0.15–0.65 on
+   hyperparameters, the only honest baseline is the best of a fixed-params sweep — anything else is a
+   strawman a candidate could beat without merit.
+3. **Generalize the seam once, then rungs are cheap.** Realizing the `Environment`/`EnvSpec` protocol
+   (chemotaxis kept bit-identical by a pin test) means the *next* rung — and the local-learning
+   candidate scored on this one — is a drop-in, not a refactor.
+
+<Callout variant="note" title="this rung exists for the prize built next">
+Forage is **infrastructure and a baseline**, not a result to celebrate. Its purpose is to be the first
+control rung a *genuine in-context learner* must win — the [Source-(iv)](/concepts/source-iv-advantage)
+local-learning candidate is built and scored against this **0.16** bar next, the way C.A.1/C.A.2
+challenged the chemotaxis bar.
+</Callout>
+
+<Callout variant="note" title="reproduce">
+Environment: `smolml/envs/forage.py` (`ForageEnv`, `forage_env_spec`); source:
+`win_stay_lose_shift`. Baseline sweep + FLOP-budget curve:
+`uv run python -m smolml.experiments.forage_baseline`. Regret, reward, and within-episode halves are read
+off held-out episodes; all train + eval-rollout FLOPs are counted (ADR 0004). Tests: `tests/test_forage.py`
+(incl. the reflex-proof family assertion and the chemotaxis bit-identity pin); spec:
+`docs/tasks/C.A.3-contingency-forage.md`.
+</Callout>
+
+## See also
+
+- [In-context control & chemotaxis](/concepts/in-context-control) — the rung, the `Environment` seam, the regret metric, and the C.A.0 limitation forage was built to close.
+- [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control) — the FLOP-floor win whose stationarity exposed exactly the gap this rung fixes.
+- [C.A.1 — reservoir control candidates](/experiments/C.A.1-reservoir-control) — the candidate family that challenged the chemotaxis bar, as the local learner will challenge this one.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — the only kind of win the local-learning candidate scored here may claim.
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — the shared x-axis, regret on y; here the lever is tuning, not compute.
+- [Prequential evaluation](/concepts/prequential-evaluation) — predict-and-act, every rollout FLOP counted.
+
+</Layout>

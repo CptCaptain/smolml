@@ -1,0 +1,230 @@
+---
+// A static spacetime raster of ONE forage episode — rows = steps (time ↓),
+// columns = the W ring cells, cell colour = cue type, with the agent's path and
+// its eat outcomes (reward +1 / poison −1) overlaid. The forage env ships a
+// `render_rollout` PNG, but no measured forage-rollout JSON is published under
+// public/ (unlike chemotaxis' icl_control_rollout.json), so this is a
+// hand-authored ILLUSTRATIVE episode — the rules made visible, not a measured
+// trajectory. It is captioned as such on the page. The episode is the only
+// place forage cue types are drawn, so the three category colours live in this
+// component's scoped style (they are not model role tokens). Single-use, like
+// ControlRollout (rule of two not triggered).
+const W = 16; // ring cells
+const G = 1; // the latent good cue type this episode (the agent must infer it)
+// cell → cue type (stationary; i.i.d. uniform per episode — here a fixed sample).
+const types = [1, 2, 0, 2, 1, 0, 1, 2, 2, 0, 1, 2, 0, 1, 0, 2];
+// One illustrative win-stay/lose-shift rollout: probe a cue, EAT to test it,
+// keep moving on poison, then camp the cell that paid (+1, eaten in place).
+type Step = { pos: number; act: "EAT" | "LEFT" | "RIGHT"; r: -1 | 0 | 1 };
+const steps: Step[] = [
+  { pos: 7, act: "EAT", r: -1 }, // probe a type-2 cell → poison
+  { pos: 7, act: "RIGHT", r: 0 },
+  { pos: 8, act: "RIGHT", r: 0 }, // type-2 now known bad → move on
+  { pos: 9, act: "EAT", r: -1 }, // probe a type-0 cell → poison
+  { pos: 9, act: "RIGHT", r: 0 },
+  { pos: 10, act: "EAT", r: 1 }, // type-1 pays — that is g, found
+  { pos: 10, act: "EAT", r: 1 }, // camp it in place: +1 / step
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+  { pos: 10, act: "EAT", r: 1 },
+];
+const H = steps.length;
+const meanR = steps.reduce((a, s) => a + s.r, 0) / H;
+
+const VBW = 600;
+const GL = 36; // left gutter (step numbers)
+const GT = 30; // top gutter (cell numbers)
+const RW = 64; // right area (per-step reward chip)
+const cellW = (VBW - GL - RW) / W;
+const cellH = 21;
+const GH = cellH * H;
+const VBH = GT + GH + 10;
+const colX = (c: number) => GL + c * cellW;
+const cellCX = (c: number) => GL + (c + 0.5) * cellW;
+const rowY = (t: number) => GT + t * cellH;
+const rowCY = (t: number) => GT + (t + 0.5) * cellH;
+// agent trajectory polyline (cell centre per step)
+const pathPts = steps.map((s, t) => `${cellCX(s.pos)},${rowCY(t)}`).join(" ");
+---
+
+<figure class="figure fraster">
+  <svg
+    viewBox={`0 0 ${VBW} ${VBH}`}
+    role="img"
+    aria-label="Illustrative forage episode: rows are steps, columns are the 16 ring cells coloured by cue type, with the agent probing two poison cells then camping the good cue."
+    class="fr-svg"
+  >
+    {/* column (cell) headers */}
+    {
+      Array.from({ length: W }, (_, c) => (
+        <text x={cellCX(c)} y={GT - 18} class="fr-axis" text-anchor="middle">
+          {c}
+        </text>
+      ))
+    }
+    <text x={GL} y={GT - 18} class="fr-axis fr-corner" text-anchor="end">
+      cell
+    </text>
+    {/* the grid: one rect per (step, cell), coloured by stationary cue type */}
+    {
+      steps.map((_, t) =>
+        types.map((ty, c) => (
+          <rect
+            x={colX(c)}
+            y={rowY(t)}
+            width={cellW}
+            height={cellH}
+            class={`fr-cell fr-t${ty}${ty === G ? " fr-good" : ""}`}
+          />
+        )),
+      )
+    }
+    {/* step (row) numbers + per-step reward chip */}
+    {
+      steps.map((s, t) => (
+        <>
+          <text x={GL - 8} y={rowCY(t) + 4} class="fr-axis" text-anchor="end">
+            {t}
+          </text>
+          <text
+            x={VBW - RW + 10}
+            y={rowCY(t) + 4}
+            class={`fr-rew ${s.r > 0 ? "pos" : s.r < 0 ? "neg" : "zero"}`}
+          >
+            {s.act === "EAT" ? (s.r > 0 ? "EAT +1" : "EAT −1") : s.act === "RIGHT" ? "→ 0" : "← 0"}
+          </text>
+        </>
+      ))
+    }
+    {/* agent trajectory + per-step position marker + eat outcomes */}
+    <polyline points={pathPts} class="fr-path" fill="none" />
+    {
+      steps.map((s, t) => (
+        <>
+          <rect
+            x={colX(s.pos) + 1.5}
+            y={rowY(t) + 1.5}
+            width={cellW - 3}
+            height={cellH - 3}
+            class="fr-agent"
+            fill="none"
+            rx="3"
+          />
+          {s.act === "EAT" && (
+            <circle cx={cellCX(s.pos)} cy={rowCY(t)} r="4.6" class={s.r > 0 ? "fr-eat-pos" : "fr-eat-neg"} />
+          )}
+        </>
+      ))
+    }
+  </svg>
+  <figcaption class="figcaption">
+    An <strong>illustrative</strong> forage episode (the rules made visible — not a measured rollout):
+    rows are steps (time ↓), the 16 columns are the stationary ring cells coloured by cue type
+    (<span class="fr-key fr-t0"></span>type 0, <span class="fr-key fr-t1"></span>type 1,
+    <span class="fr-key fr-t2"></span>type 2). This episode's latent good cue is
+    <strong>g = type 1</strong> (the agent is <em>not</em> told this). The agent (outlined cell + path)
+    probes a type-2 then a type-0 cell, is <span class="fr-ink-neg">poisoned −1</span> each time, then
+    eats a type-1 cell, is <span class="fr-ink-pos">rewarded +1</span>, and camps it
+    <em>in place</em> for +1/step — the win-stay/lose-shift strategy the distillation source teaches.
+    Mean reward ≈ {meanR.toFixed(2)} here (a short illustrative H = {H}; production episodes run H = 64).
+  </figcaption>
+</figure>
+
+<style>
+  .fr-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    font-family: var(--font-mono);
+  }
+  .fr-cell {
+    stroke: var(--ink);
+    stroke-width: 1;
+  }
+  /* three cue-type category colours (forage-local, not model role tokens) */
+  .fr-t0 {
+    fill: #6b8fb5;
+  }
+  .fr-t1 {
+    fill: #d8a657;
+  }
+  .fr-t2 {
+    fill: #a8708f;
+  }
+  .fr-cell.fr-good {
+    stroke: var(--paper);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+  }
+  .fr-axis {
+    fill: var(--muted);
+    font-size: 10px;
+  }
+  .fr-corner {
+    fill: var(--faint);
+  }
+  .fr-rew {
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .fr-rew.pos {
+    fill: var(--c-transformer);
+  }
+  .fr-rew.neg {
+    fill: var(--c-warm);
+  }
+  .fr-rew.zero {
+    fill: var(--muted);
+  }
+  .fr-path {
+    stroke: var(--paper);
+    stroke-width: 1.6;
+    opacity: 0.5;
+  }
+  .fr-agent {
+    stroke: var(--paper);
+    stroke-width: 2;
+  }
+  .fr-eat-pos {
+    fill: var(--c-transformer);
+    stroke: var(--ink);
+    stroke-width: 1;
+  }
+  .fr-eat-neg {
+    fill: var(--c-warm);
+    stroke: var(--ink);
+    stroke-width: 1;
+  }
+  /* inline keys in the caption */
+  .fr-key {
+    display: inline-block;
+    width: 0.72em;
+    height: 0.72em;
+    border-radius: 2px;
+    vertical-align: -0.05em;
+    margin: 0 0.15em 0 0.1em;
+  }
+  .fr-key.fr-t0 {
+    background: #6b8fb5;
+  }
+  .fr-key.fr-t1 {
+    background: #d8a657;
+  }
+  .fr-key.fr-t2 {
+    background: #a8708f;
+  }
+  .fr-ink-pos {
+    color: var(--c-transformer);
+    font-weight: 600;
+  }
+  .fr-ink-neg {
+    color: var(--c-warm);
+    font-weight: 600;
+  }
+</style>

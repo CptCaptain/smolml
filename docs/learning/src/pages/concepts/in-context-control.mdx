@@ -26,6 +26,7 @@ import { controlCandidates } from "../../data/curves";
     { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
     { href: "/concepts/fast-weight-memory", title: "Fast-weight associative memory" },
     { href: "/experiments/C.A.2-chemotaxis-min-control", title: "C.A.2 — chemotaxis_min (the FLOP-floor win)" },
+    { href: "/experiments/C.A.3-contingency-forage", title: "C.A.3 — contingency forage (the reflex-proof rung)" },
     { href: "/experiments/C.A.1-reservoir-control", title: "C.A.1 — reservoir candidates" },
   ]}
 >
@@ -232,6 +233,23 @@ hand-coded reactor already takes the rung's per-FLOP optimum, so a harder "C.A.0
 distillation source *learns within the episode* — is what would force genuine drift-rate inference.
 </Callout>
 
+## The realized next rung — contingency forage
+
+That harder "C.A.0b" rung is now built:
+**[C.A.3 — contingency forage](/experiments/C.A.3-contingency-forage)** is **reflex-proof** by
+construction. The optimal action depends on a *per-episode latent the agent can only learn from its own
+eat-outcomes*, so — unlike chemotaxis — **no fixed reflex is near-optimal** and in-context learning is
+*required*. Its distillation source itself learns within the episode (explore early, exploit the good cue
+late), and a fairly-tuned transformer bar sits at **≈ 0.16 regret**. It is the rung the next
+local-learning candidate is scored against.
+
+<Callout variant="insight" title="from gameable to reflex-proof">
+`chemotaxis_min` exposed that C.A.0's optimum is a fixed reaction; forage closes that gap by construction
+— blind eating is net-negative (poison), so regret finally measures *learning the contingency*, not
+executing a reflex. Getting there was a Monte-Carlo discipline, not an assertion: adversarial review caught
+two plausible designs that each let a fixed policy beat the "oracle," and both were fixed and re-verified.
+</Callout>
+
 ## See also
 
 - [Prequential evaluation](/concepts/prequential-evaluation) — predict-before-reveal and total-FLOP accounting, here stretched over a predict-and-act tape.
@@ -240,6 +258,7 @@ distillation source *learns within the episode* — is what would force genuine 
 - [Fast-weight associative memory](/concepts/fast-weight-memory) — cheap in-context memory, the raw material a within-episode control learner would lean on.
 - [Online context mixing](/concepts/context-mixing) — the live byte race: the same predict-then-learn loop, measuring bpb per FLOP instead of reward.
 - [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control) — the five-scalar organism that beats the bar on the FLOP axis, and why it is a floor result.
+- [C.A.3 — contingency forage](/experiments/C.A.3-contingency-forage) — the reflex-proof rung that closes C.A.0's gameable-by-reflex gap; the next candidate's proving ground, and the realized `Environment` seam.
 - [C.A.1 — reservoir control candidates](/experiments/C.A.1-reservoir-control) — the echo-state family that clears the random floor but loses on regret.
 
 </Layout>
