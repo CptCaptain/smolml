@@ -65,11 +65,10 @@ _UPDATE_OPS = (
 )
 _VCUR_OPS = 1  # v_cur = v[current_type] : a gather for the heads
 _POLICY_OPS = 7  # eat = g*v_cur (1) + b_eat (1); left/right expand (2); stack-3 (3)
-_REW_OPS = (
-    11  # gv = g_wm*v_cur (1), -gv (1); stack eat-row (3); stack move-row (3); where over 3 (3)
-)
+_REW_OPS = 14  # gv, -gv, zeros_like, is_eat==EAT, stick expand (5); eat/move stacks (6); where (3)
 _PER_TYPE_OPS = 3  # per type: one-hot build (1); * stick (1); where vs zeros (1)
 _PER_SYMBOL_OPS = 2  # per combined obs symbol: outer-sum add (1); final cat copy (1)
+_CAT_ACTION_OPS = 3  # the N_ACTIONS action logits copied in the final cat([obs, action])
 
 
 @dataclass
@@ -214,6 +213,7 @@ class ForageMin(LanguageModel):
             + _VCUR_OPS
             + _POLICY_OPS
             + _REW_OPS
+            + _CAT_ACTION_OPS
             + _PER_TYPE_OPS * self.K
             + _PER_SYMBOL_OPS * self.obs_len
         )
