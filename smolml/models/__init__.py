@@ -21,6 +21,8 @@ from smolml.models.registry import (
     register_model,
 )
 from smolml.models.reservoir import (
+    ForageReservoir,
+    ForageReservoirConfig,
     Reservoir,
     ReservoirConfig,
     ReservoirPlastic,
@@ -47,6 +49,8 @@ __all__ = [
     "DeltaMixConfig",
     "ForageMin",
     "ForageMinConfig",
+    "ForageReservoir",
+    "ForageReservoirConfig",
     "PCRefine",
     "Reservoir",
     "ReservoirConfig",
