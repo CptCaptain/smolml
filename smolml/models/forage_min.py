@@ -92,9 +92,9 @@ class ForageMinConfig:
 
     vocab_size: int = REWARD_LEVELS * 3 + N_ACTIONS
     max_seq_len: int = 256
-    lr_init: float = 0.5  # delta-rule rate (fast: flips on one poison)
+    lr_init: float = 0.8  # delta-rule rate (fast: one observation flips a type's value)
     v_init: float = 0.3  # optimistic prior -> explore unknown types by eating
-    gain_init: float = 4.0  # policy gain on the current type's value
+    gain_init: float = 8.0  # policy gain: large => firm (near-greedy) camping under sampling
     eat_bias_init: float = 0.0
     left_bias_init: float = -2.0  # discourage LEFT; search goes RIGHT
     right_bias_init: float = 0.5  # default search direction
