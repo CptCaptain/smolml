@@ -149,8 +149,9 @@ interactive scrubbable viz on the `in-context-control` MDX page is a **docs-buil
   - tape & slices: alternating obs/action; **obs sub-vocab occupies `[0, 3K)`, actions above**;
     `vocab_size == 3K+3`; world-model bits scored only on obs positions; the obs symbol encodes
     `(type, last_reward)` per the pinned id map.
-  - **metric bounds (at production H=64):** `oracle ≈ +0.335` (MC-pinned, regret ≈ 0); `random ≈
-    −0.112`; `always_eat ≈ −0.329`; `win_stay_lose_shift` strictly between `always_right` and oracle.
+  - **metric bounds (at production H=64):** `oracle ≈ +0.97` (camps `g`; MC-pinned, regret ≈ 0); `random
+    ≈ −0.11`; `always_eat ≈ −0.33`; `win_stay_lose_shift` (≈ +0.85) strictly between `always_right` (0)
+    and oracle.
   - **REFLEX-PROOF (the headline, closing C.A.0's gap):** over the fixed-policy family
     (`always_eat`, `always_right`, `always_left`, `eat_fixed_type_k` for each `k`), `max regret >
     win_stay_lose_shift regret` by a pinned delta — AND `oracle_reward ≥ best_fixed_reward + margin`
