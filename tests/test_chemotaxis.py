@@ -11,12 +11,13 @@ from smolml.envs.chemotaxis import (
     RunAndTumble,
     action_slice,
     action_token,
+    chemo_env_spec,
     conc_slice,
     drift_rates,
-    make_distillation_batch,
     ringdist,
     vocab_size,
 )
+from smolml.envs.spec import make_distillation_batch
 
 # --- Task 1: Environment seam, config, vocab helpers ---------------------------
 
@@ -115,7 +116,9 @@ def test_source_shows_within_episode_improvement():
 
 def test_distillation_tape_format_and_shift():
     cfg = ChemoConfig(width=16, levels=8, horizon=8)
-    x, y = make_distillation_batch(cfg, "train", batch_size=4, seed=0, device=torch.device("cpu"))
+    x, y = make_distillation_batch(
+        chemo_env_spec(cfg), batch_size=4, seed=0, device=torch.device("cpu")
+    )
     assert x.shape == (4, 2 * cfg.horizon) == y.shape
     assert torch.equal(x[:, 1:], y[:, :-1])  # y is the next-token shift of x
     cs, as_ = conc_slice(cfg), action_slice(cfg)

@@ -339,7 +339,7 @@ clone, fully offline.
   the prior only; carrying online/adaptation *state* from the prior corpus into
   the eval stream is deferred until a stateful candidate needs it.
 
-## 6. Control rung (in-context RL) — chemotaxis (Task C.A.0)
+## 6. Control rungs (in-context RL): chemotaxis (C.A.0) + contingency-forage (C.A.3)
 
 A third measurement mode, for **feedback-driven** mechanisms: instead of
 predicting the next byte of a fixed corpus, the model *acts* in an environment
@@ -381,15 +381,20 @@ Everything downstream depends only on a thin **`Environment` protocol**:
 
 ```python
 class Environment(Protocol):
-    def reset(self) -> int: ...                            # initial concentration token
-    def step(self, action_idx: int) -> tuple[int, float]:  # (level_token, raw_reward)
-    def oracle_action(self) -> int: ...                    # greedy peak-seeking move
+    n_actions: int                                         # action sub-vocab size
+    horizon: int                                           # episode length
+    def reset(self) -> int: ...                            # initial obs token
+    def step(self, action_idx: int) -> tuple[int, float]:  # (obs_token, reward)
+    def oracle_action(self) -> int: ...                    # the regret reference's move
+    def record_state(self) -> dict: ...                    # per-env trajectory payload
 ```
 
-`evaluate_control`, `distill_train_run`, and every candidate touch the env *only*
-through this seam, so a different feedback task (a new ring rule, a 2-D grid, a
-bandit) drops in by implementing `reset`/`step`/`oracle_action` and reusing the
-whole rung — scorer, trainer, leaderboard, and renderer unchanged.
+The seam is **realized** (Task C.A.3): `evaluate_control`, `make_distillation_batch`, and
+`distill_train_run` consume an `EnvSpec` (`smolml/envs/spec.py`) — `env_factory(split, seed) ->
+Environment`, a `source_factory`, and a `TapeSpec` (`vocab_size`, `obs_slice`, `action_slice`) — built
+per env by a one-call `*_env_spec` helper. Chemotaxis is instance #1, **contingency-forage (below) is
+instance #2**; a third feedback task drops in by shipping an `Environment` + its `EnvSpec`, with the
+scorer/trainer/leaderboard/renderer unchanged (chemotaxis stays bit-identical, pinned by a test).
 
 ### Training — Algorithm Distillation
 
@@ -407,7 +412,7 @@ schema, control fields): step lines carry `cumulative_flops`, `mean_reward`,
 
 ### Evaluation — interactive rollout (FLOP-honest)
 
-`evaluate_control(model, cfg, *, split="eval", n_episodes, seed, device,
+`evaluate_control(model, env_spec, *, split="eval", n_episodes, seed, device,
 greedy=False, record=False)` (`smolml/control_eval.py`) plays the model **live**
 in `ChemoEnv` over a seeded held-out set, reusing the exact `model.step` channel
 prequential uses (§5). Per env step it: feeds the current concentration through
@@ -447,8 +452,9 @@ rollout time pays for it; there is no off-channel compute.
   memorization-proof (disjoint drift pools, fresh per-episode dynamics, local-only
   sensing), and `second_half_reward > first_half_reward` confirms the agent climbs
   onto the peak — but it does not yet *isolate* in-context drift-rate inference from
-  a memorized fixed reaction. Sourcing tapes from a within-episode *learner* (or
-  making drift inference load-bearing) is the documented enhancement for a follow-up.
+  a memorized fixed reaction. **Fixed in C.A.3 (contingency-forage, below):** its optimal policy
+  depends on a per-episode latent the agent can only infer from its own eat-outcomes, so no fixed
+  reflex is near-optimal — in-context learning is *required* (a reflex-proof rung).
 
 ### Running the baseline
 
@@ -538,9 +544,10 @@ actions, rewards, predicted concentrations). Then:
 
 ```python
 from smolml.envs.render import render_rollout, animate_rollout
+from smolml.envs.chemotaxis import chemo_env_spec
 
-res = evaluate_control(model, cfg, split="eval", n_episodes=1, seed=0,
-                       device=torch.device("cpu"), record=True)
+res = evaluate_control(model, chemo_env_spec(cfg), split="eval", n_episodes=1,
+                       seed=0, device=torch.device("cpu"), record=True)
 render_rollout(res.trajectory, "runs/control/rollout.png")           # spacetime raster
 animate_rollout(res.trajectory, "runs/control/rollout.gif", fps=10)  # opt-in GIF
 ```
@@ -549,6 +556,33 @@ animate_rollout(res.trajectory, "runs/control/rollout.gif", fps=10)  # opt-in GI
 concentration field over time with the agent and peak paths overlaid, plus a
 cumulative-reward trace. `animate_rollout` is an opt-in animated GIF (headless
 matplotlib + the pillow writer, guarded — it raises if pillow is unavailable).
+
+### Contingency-forage rung (Task C.A.3) — reflex-proof
+
+`smolml/envs/forage.py`, the seam's **instance #2**. Chemotaxis's optimum is a fixed gradient-climb
+reflex (so `chemotaxis_min` "won" without learning); forage closes that gap. A **stationary** ring of
+`width=16` cells, each one of `n_types=3` cue types; exactly one type `g` is *good* this episode and
+pays `+1` on EAT, the others `−1` (poison). `g` and the layout are fresh per episode (train/eval =
+disjoint seed bands, `band_seed`), so there is **no fixed mapping to memorize** — the agent must infer
+`g` from its own eat-outcomes. EAT eats **in place** (re-eatable): camping a `g` cell is the `+1`/step
+optimum (the oracle reference ⇒ regret ≥ 0), blind eating is net-negative poison, and food never
+depletes. The obs is a combined `(type, last_reward)` symbol (`obs = type·3 + (reward+1)`;
+`obs_slice = [0, 3K)`, `action_slice = [3K, 3K+3)`), so the agent always sees the current cue **and**
+the reward signal in the same 2-token tape the chemotaxis scorer uses (no scorer change).
+
+**Reflex-proof, MC-pinned (W=16, K=3, H=64):** oracle (camps `g`) ≈ +0.97; `always_right` (best blind
+fixed policy) 0.0; `always_eat` ≈ −0.33; random ≈ −0.11; the AD source `WinStayLoseShift` ≈ +0.85 with
+within-episode improvement. No contingency-blind fixed policy competes with the oracle, so regret
+measures in-context learning (`tests/test_forage.py`).
+
+**Fair baseline (the honest bar).** A distill-train is fast and regret plateaus on FLOPs alone, so the
+bar is the **best of a training-hyperparameter sweep at fixed params `P`** (`smolml/experiments/
+forage_baseline.py`): sweep `lr × weight_decay × batch_size × ε` at a fast budget, re-rank the top-3 at
+the leaderboard budget, trace the FLOP curve with the winner. Sweep regret ranged **0.15–0.65** (tuning,
+not compute, is the lever); chosen `lr=3e-3, wd=0, bs=32, ε=0.05` → **transformer bar ≈ 0.16 regret /
++0.77 reward @ ~3e11 FLOPs** (oracle 0). Run: `uv run python -m smolml.experiments.forage_baseline` →
+`runs/forage/leaderboard.{md,png}` + a sample raster. A local-learning candidate that infers `g`
+cheaper per-FLOP is this rung's prize (a follow-on PR).
 
 ## Caveats (known gaps; do not over-read small deltas)
 

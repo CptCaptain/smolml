@@ -17,6 +17,7 @@ from smolml.envs.chemotaxis import (
     RandomPolicy,
     action_slice,
     action_token,
+    chemo_env_spec,
     conc_slice,
     vocab_size,
 )
@@ -149,7 +150,9 @@ def test_num_params_is_the_five_scalars():
 def test_end_to_end_beats_random_and_improves(tmp_path):
     chem = ChemoConfig(width=16, levels=8, horizon=24)
     model, _ = _build(levels=8, horizon=24)
-    res = evaluate_control(model, chem, split="eval", n_episodes=48, seed=0, device=DEVICE)
+    res = evaluate_control(
+        model, chemo_env_spec(chem), split="eval", n_episodes=48, seed=0, device=DEVICE
+    )
 
     # random-policy floor on the same held-out split (~0.37).
     floor = []
