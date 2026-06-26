@@ -18,6 +18,7 @@ export type SeriesRole =
   | "reservoir" // C.A.1 echo-state reservoir + distilled-frozen readout (control rung; periwinkle --c-reservoir)
   | "reservoir_plastic" // C.A.1b reservoir + online plastic readout (control rung; lavender --c-plastic, same family)
   | "chemotaxis" // C.A.2 chemotaxis_min — 5 hand-coded run-and-tumble scalars (control rung; teal --c-chemo)
+  | "forage_min" // C.A.4 forage_min — per-type contingency tracker, ~8 scalars (forage bandit rung; magenta --c-forage)
   | "neutral";
 
 export interface CurvePoint {
@@ -560,3 +561,65 @@ export const controlCandidates: Series[] = [controlBar, reservoirCurve, reservoi
 export const reservoirControl: Series[] = [controlBar, reservoirCurve, reservoirPlasticPoint];
 // chemotaxis_min experiment page: the bar vs the FLOP-floor winner.
 export const chemotaxisControl: Series[] = [controlBar, chemotaxisPoint];
+
+// ── C.A.4: forage local-learning candidates on the forage (contextual-bandit) rung ──
+// Source: docs/researcher-notes/C.A.4-forage-local-learner.md (FLOP accounting per
+// ADR 0004). The forage rung is a contextual bandit over K=3 cue types: each episode
+// a hidden "good" type pays +1 on EAT while every other type poisons (−1), with a
+// fresh good-type + layout each episode. The headline metric is REGRET vs the oracle
+// per TOTAL FLOP at fixed memory (held-out eval, H=64, 32 episodes; lower-left wins),
+// so these series carry `regret`, not bpb, and the RegretFlopChart marker reads `regret`.
+// Three candidates:
+//   forage_min       — the per-type contingency tracker (~8 scalars): a per-type value
+//                       vector v[K] nudged by a local delta rule v[t] += lr·(r − v[t]),
+//                       optimistic-init exploration, a distilled-scalar softmax policy.
+//                       BEATS the bar on regret (0.047 < 0.113) AND by ~6 OOM on FLOPs.
+//                       Distillation DEGRADES it (0.047 → 0.161 by 400 steps). Magenta.
+//   transformer bar  — the swept distilled-transformer winner (148,672 params). Regret
+//                       is FLAT across its FLOP curve (0.113 → 0.135): tuning, not
+//                       compute, is its lever — an honest bar. Green (the incumbent).
+//   forage_reservoir — the reservoir_plastic mechanism ported to forage (148,093 params):
+//                       generic capacity, NO per-type structure, so per-type credit through
+//                       one plastic readout is muddy. LOSES on both axes — the memory-parity
+//                       control that isolates STRUCTURE (not capacity) as the per-FLOP lever.
+//                       Reuses the C.A.1b reservoir-family lavender (--c-plastic).
+// All three points carry reported FLOP coordinates, so each is a full curve (unlike the
+// C.A.2 chemotaxis_min point, whose distilled regrets had no reported FLOPs).
+const forageBar: Series = {
+  id: "forage_transformer_bar",
+  label: "transformer bar (148,672 params)",
+  role: "transformer",
+  kind: "curve",
+  dashed: true,
+  points: [
+    { flops: 6.39e11, regret: 0.113, tag: "150 distill steps — the swept winner" },
+    { flops: 1.7e12, regret: 0.132, tag: "400 distill steps" },
+    { flops: 3.83e12, regret: 0.135, tag: "900 distill steps — regret flat, tuning is its lever" },
+  ],
+};
+const forageMinCurve: Series = {
+  id: "forage_min",
+  label: "forage_min — 8 params (per-type tracker)",
+  role: "forage_min",
+  kind: "curve",
+  points: [
+    { flops: 2.66e5, regret: 0.047, tag: "~0 distillation (0 steps) — the headline" },
+    { flops: 8.0e7, regret: 0.056, tag: "100 distill steps — inits already near-optimal" },
+    { flops: 3.2e8, regret: 0.161, tag: "400 distill steps — distillation degrades it" },
+  ],
+};
+const forageReservoirCurve: Series = {
+  id: "forage_reservoir",
+  label: "forage_reservoir — 148,093 params (generic capacity)",
+  role: "reservoir_plastic",
+  kind: "curve",
+  dashed: true,
+  points: [
+    { flops: 1.22e9, regret: 0.456, tag: "~0 distillation — no per-type structure" },
+    { flops: 6.23e10, regret: 0.514, tag: "50 distill steps" },
+    { flops: 2.46e11, regret: 0.397, tag: "200 distill steps" },
+  ],
+};
+
+// C.A.4 forage experiment page: the bar vs the tiny per-type tracker vs the generic reservoir.
+export const forageControl: Series[] = [forageBar, forageMinCurve, forageReservoirCurve];

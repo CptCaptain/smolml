@@ -1,0 +1,236 @@
+---
+title: C.A.4 — forage local learners (a tiny tracker beats the bar)
+---
+
+import Layout from "../../layouts/Layout.astro";
+import Callout from "../../components/Callout.astro";
+import RegretFlopChart from "../../components/RegretFlopChart.astro";
+import HBars from "../../components/HBars.astro";
+import { forageControl } from "../../data/curves";
+
+<Layout
+  title="C.A.4 — forage local learners (a tiny tracker beats the bar)"
+  kicker="EXP C.A.4"
+  blurb="An 8-parameter per-type contingency tracker reaches lower regret than the swept distilled transformer on the forage bandit — at ~6 orders of magnitude fewer FLOPs. A genuine Source-(iv) win on a reflex-proof rung."
+  related={[
+    { href: "/concepts/in-context-control", title: "In-context control & chemotaxis" },
+    { href: "/experiments/C.A.2-chemotaxis-min-control", title: "C.A.2 — chemotaxis_min (the FLOP-floor win)" },
+    { href: "/experiments/C.A.1-reservoir-control", title: "C.A.1 — reservoir control candidates" },
+    { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
+    { href: "/concepts/loss-per-flop-and-scaling-laws", title: "Loss-per-FLOP & scaling laws" },
+    { href: "/experiments/first-finding-pareto", title: "First finding — plot the floor first" },
+    { href: "/concepts/prequential-evaluation", title: "Prequential evaluation" },
+  ]}
+>
+
+<Callout variant="insight" title="lower regret than the bar — and ~6 OOM fewer FLOPs">
+`forage_min` reaches **0.047 regret at $2.66\times10^{5}$ total FLOPs** with **8 parameters**. The swept
+distilled [transformer bar](/concepts/in-context-control)'s cheapest point is **0.113 at $6.39\times10^{11}$**
+with 148,672 params — so `forage_min` is **lower-regret at ~6 orders of magnitude fewer FLOPs**, and it
+also beats `win_stay_lose_shift` (regret 0.11), because it exploits firmly instead of being forced into
+ε-exploration. It sits in the far lower-left at every FLOP budget the transformer can reach.
+</Callout>
+
+<Callout variant="caveat" title="reflex-proof and a genuine learner — but the rung's optimum is still cheaply learnable">
+Forage is **reflex-proof** — no *fixed* policy is near-optimal (`always_eat` and `random` sit far below) —
+and `forage_min` is a genuine *online learner* (its second-half reward beats its first by **+0.16**), so a
+win is the [Source-(iv)](/concepts/source-iv-advantage) thesis, **not** a strawman. But — exactly as
+[`chemotaxis_min`](/experiments/C.A.2-chemotaxis-min-control) did on chemotaxis — a tracker so well-matched
+to *the bandit winning* also re-shows that this rung's optimum is **cheaply learnable by a local rule**. The
+bar is honest (best of a swept baseline), so the comparison is fair; the per-FLOP lever is **structure**
+(exact per-cue-type credit assignment), **not capacity** — the memory-parity `forage_reservoir` has the
+budget and loses on both axes.
+</Callout>
+
+**Status:** mechanism sound, honestly metered, FLOPs counted per [ADR 0004](/concepts/loss-per-flop-and-scaling-laws) —
+and on the headline **regret-per-FLOP** metric it **BEATS the bar** (decisively, on the FLOP axis), with the
+load-bearing caveat above. **Concepts:** [in-context control](/concepts/in-context-control),
+[loss-per-FLOP](/concepts/loss-per-flop-and-scaling-laws), [Source-(iv)](/concepts/source-iv-advantage).
+**Sibling:** [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control), the same story on the
+stationary chemotaxis rung.
+
+## Intuition — a contextual bandit over cue types
+
+The forage rung is a **contextual bandit over cue types**: each episode picks a hidden "good" type $g$ that
+pays **+1** on EAT while every other type **poisons** (−1), with a fresh $g$ and layout each episode. The
+whole game is: *figure out which cue type pays, from your own eat-outcomes, then camp a cell of that type.*
+
+A transformer learns this by [Algorithm Distillation](/concepts/in-context-control) — copying a
+within-episode learner into attention over the tape, at $O(\text{window}\cdot d)$ per step plus a
+distillation bill. The C.A.4 question is the [Source-(iv)](/concepts/source-iv-advantage) one: can a **tiny
+local rule** learn the same contingency online, far cheaper per FLOP? Two candidates answer it — the headline
+`forage_min` and its memory-parity control `forage_reservoir`.
+
+## The math — a per-type value vector + a delta rule
+
+`forage_min` is the **bandit analogue of [`chemotaxis_min`](/experiments/C.A.2-chemotaxis-min-control)**. Its
+in-context memory is a **per-type value vector** `v[K]` (with $K = 3$ cue types), **reset each episode** —
+not a learned weight. Two moving parts:
+
+**Local credit assignment — a delta rule.** When the agent EATs a cell of type `t` and the next observation
+reveals reward `r`, it nudges that type's value toward the outcome:
+
+$$v[t] \;\leftarrow\; v[t] + \text{lr}\cdot\big(r - v[t]\big)$$
+
+Because EAT does not move, the eaten type **equals the currently-sensed type** — so credit is assigned
+**exactly and locally in $O(1)$**: no backprop, no attention over history.
+
+**A distilled-scalar softmax policy.** Action logits are read off the current type's value, with standing
+logits for the moves:
+
+$$\text{logit}(\text{EAT}) = g\cdot v[t] + b_{\text{eat}}, \qquad \text{logit}(\text{LEFT}),\ \text{logit}(\text{RIGHT}) = \text{const}$$
+
+An **optimistic initial value** ($v_{\text{init}} > 0$) makes unknown types worth eating, so it **explores by
+eating**; one poison flips a type's value negative, so it then **moves past** that type to search; a positive
+type makes it **camp**. This is win-stay-lose-shift — but expressed as a *learned, differentiable,
+FLOP-counted* policy (≈ 8 scalar params), not a hand-coded if/else.
+
+<Callout variant="note" title="FLOP honesty">
+Every op is pointwise, and the value update is **forward** compute, so `step` charges **`backward = 0`**.
+The headline run does **~0 distillation** (trains 0 steps) — all learning happens online during the
+held-out rollout, counted FLOP-for-FLOP. The model still emits full-vocab logits each step (a small
+world-model head over the obs slice predicts the next `(type, reward)` symbol; its reward component *is* the
+contingency belief). Total: **$2.66\times10^{5}$ FLOPs** across the whole held-out eval.
+</Callout>
+
+## Worked example — one episode
+
+With $K = 3$, optimistic `v = [+0.3, +0.3, +0.3]`, `lr = 0.8`, `g = 8`:
+
+1. On a **type-1** cell, $v[1] = +0.3 \Rightarrow \text{logit}(\text{EAT}) = 8\cdot 0.3 = +2.4$ ≫ the move
+   logits → **EAT**. Reward **−1** (type 1 is poison). The next obs reveals it:
+   $v[1] \leftarrow 0.3 + 0.8\cdot(-1 - 0.3) = -0.74$.
+2. Back on a **type-1** cell, $\text{logit}(\text{EAT}) = 8\cdot(-0.74) = -5.9$ → **move RIGHT** to search.
+3. On a **type-0** cell (still optimistic at $+0.3$) → **EAT**. Reward **+1** (type 0 is $g$):
+   $v[0] \leftarrow 0.3 + 0.8\cdot(1 - 0.3) = +0.86 \Rightarrow \text{logit}(\text{EAT}) = +6.9$ → it **camps**
+   type-0 cells for +1 per step.
+
+The agent identified $g$ in **~2 eat-outcomes** and camped — the within-episode learning curve the metric
+rewards (second-half reward ≫ first-half).
+
+## Result — beats the bar on regret *and* on FLOPs
+
+<figure class="figure">
+  <RegretFlopChart
+    series={forageControl}
+    yMin={0}
+    yMax={0.55}
+    annotations={[
+      { flops: 2.66e5, regret: 0.047, text: "forage_min — 8 params", dx: 14, dy: -28 },
+      { flops: 6.39e11, regret: 0.113, text: "transformer bar — ~6 OOM more FLOPs", dx: -10, dy: 30 },
+      { flops: 6.23e10, regret: 0.514, text: "forage_reservoir — capacity, no structure", dx: -8, dy: -16 },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Regret vs the oracle (y, lower = better; 0 = the oracle) against total FLOPs (x, log scale), at fixed
+    memory, all train + eval-rollout FLOPs counted. The <span class="swatch forage_min"></span>`forage_min`
+    curve sits at the **far lower-left** — the best **regret-per-FLOP** on the chart: lower regret than the
+    <span class="swatch transformer"></span>`transformer bar`'s **cheapest** point (0.113) at ~6 orders of
+    magnitude fewer FLOPs. The memory-parity <span class="swatch reservoir_plastic"></span>`forage_reservoir`
+    sits far up and to the right — generic capacity without per-type structure loses on **both** axes. Each
+    candidate curve *rises* with distillation: more FLOPs do not buy lower regret here. **Lower-left wins.**
+  </figcaption>
+</figure>
+
+At ~0 distillation, `forage_min` reaches **0.047 regret at $2.66\times10^{5}$ FLOPs**. Its mean per-step
+reward (≈ the oracle's $+0.96$ minus that $0.047$ regret, so ≈ **+0.91**) edges past `win_stay_lose_shift`
+toward the oracle ceiling — while the two fixed reflexes collapse below zero, so **no fixed policy wins**:
+
+<figure class="figure">
+  <HBars
+    bars={[
+      { label: "oracle (μ-seeing ceiling)", pct: 98.0, text: "+0.96", accent: "neutral" },
+      { label: "forage_min", pct: 95.7, text: "+0.91", accent: "forage_min" },
+      { label: "win_stay_lose_shift", pct: 92.5, text: "+0.85", accent: "neutral" },
+      { label: "random policy", pct: 44.5, text: "−0.11", accent: "neutral" },
+      { label: "always_eat reflex", pct: 33.5, text: "−0.33", accent: "neutral" },
+    ]}
+  />
+  <figcaption class="figcaption">
+    Mean per-step reward per policy (higher = better, so **longer = better**; bars scaled to the eat reward
+    range [−1, +1]). The <span class="swatch neutral"></span>MC-pinned references — oracle (**+0.96**),
+    `win_stay_lose_shift` (**+0.85**), `random` (**−0.11**), `always_eat` (**−0.33**) — bracket the rung.
+    <span class="swatch forage_min"></span>`forage_min`'s reward (**+0.91**, derived as the oracle's 0.96
+    minus its 0.047 regret) edges past `win_stay_lose_shift`, while the two fixed reflexes sit **below zero**:
+    no fixed reflex is near-optimal, so the rung is **reflex-proof**.
+  </figcaption>
+</figure>
+
+And the win is *learned*, not a fixed reaction: within a single episode `forage_min`'s **second-half reward
+beats its first by +0.16** — the identify-then-camp signature, the contingency learned online.
+
+## The counterintuitive twist — distillation makes it *worse*
+
+Exactly as for `chemotaxis_min`, distilling `forage_min` (CE on the next token) **raises** its regret. The
+principled optimistic inits are already near-optimal, so spending FLOPs on backprop is wasted — the cleanest
+possible [Source-(iv)](/concepts/source-iv-advantage) result:
+
+| distillation steps | total FLOPs | regret ↓ |
+| ---: | ---: | ---: |
+| 0   | $2.66\times10^{5}$ | **0.047** |
+| 100 | $8.0\times10^{7}$  | 0.056 |
+| 400 | $3.2\times10^{8}$  | 0.161 |
+
+By 400 steps the regret has **more than tripled**. The bar tells the mirror story from the other side: its
+regret is **flat** across its own FLOP curve (0.113 → 0.132 → 0.135 over 150 → 400 → 900 steps), confirming
+that **tuning, not compute, is its lever** — an honest bar that cannot buy its way below `forage_min`.
+
+## Structure, not capacity — the `forage_reservoir` control
+
+`forage_reservoir` ports the [C.A.1b `reservoir_plastic`](/experiments/C.A.1-reservoir-control) mechanism —
+a frozen random echo-state core plus an online reward-modulated plastic readout (~148k params, for
+memory-parity with the bar) — to forage, decoding the eat-reward from the combined obs. It runs the **same
+online local rule** but with **no per-type structure**: the reservoir state is a fading summary of the
+*whole* trajectory, so per-type credit through one plastic readout is **muddy**. It lands at regret
+**≈ 0.40–0.51** across $1.22\times10^{9}$ → $2.46\times10^{11}$ FLOPs — worse than the bar and far worse than
+`forage_min`, despite memory parity. (It *does* show within-episode improvement, but from a poor baseline:
+capacity without structure learns slowly and plateaus low.) This exact shape already lost on chemotaxis; it
+is the contrast that isolates the lever — **structure, not capacity.**
+
+<Callout variant="note" title="honest robustness — not seed-overfit">
+The inits (`gain = 8`, `lr = 0.8`) were chosen on held-out eval at **seed 0** — symmetric with how the
+transformer bar is the best of a hyperparameter sweep on held-out eval. Re-evaluating the **fixed** inits on
+disjoint **seeds 1–7** gives regret **0.0435 ± 0.009 (max 0.058)** — every seed well below the bar's 0.113.
+The headline is not seed-overfit.
+</Callout>
+
+## Verdict — BEATS THE BAR (on the FLOP axis), with the caveat
+
+`forage_min` reaches regret **0.047** with **8 params** and **$2.66\times10^{5}$** total FLOPs — ~6 orders of
+magnitude below the transformer bar's $6.39\times10^{11}$ — and *beats* both `win_stay_lose_shift` and the
+swept distilled transformer (0.113) on regret. It is a **genuine Source-(iv) win** on a **reflex-proof** rung.
+But, like `chemotaxis_min`, it also re-shows that the rung's optimum is **cheaply learnable by a local rule**:
+the result says **local credit assignment extracts the contingency at a tiny fraction of the distilled
+transformer's FLOPs.**
+
+## What we learned
+
+1. **Local credit assignment beats distilled attention here.** Because EAT does not move, the eaten type
+   equals the sensed type, so an $O(1)$ per-type delta rule assigns credit **exactly** — no backprop, no
+   attention over history. Eight scalars take the per-FLOP metric outright.
+2. **Structure, not capacity, is the lever.** `forage_reservoir` has the bar's memory budget *and* the same
+   online rule, but no per-type structure — and it loses on both axes. The win is the **exact per-cue-type
+   credit assignment**, not the parameter count.
+3. **Distillation ≠ improvement when the inits are already principled.** CE-distillation *raised*
+   `forage_min`'s regret (0.047 → 0.161) while the bar's regret stayed flat across its sweep. The cleanest
+   Source-(iv) reading: the FLOPs the transformer spends to *approximate* the contingency are simply
+   unnecessary when a local rule can compute it directly.
+
+<Callout variant="note" title="reproduce">
+Static plot: `runs/forage/leaderboard.png`. `forage_min` is the per-type contingency tracker (~8 scalars);
+`forage_reservoir` ports the [C.A.1b `reservoir_plastic`](/experiments/C.A.1-reservoir-control) mechanism to
+forage. Regret and within-episode reward are read off **held-out** forage episodes ($H = 64$, 32 episodes);
+all train + eval-rollout FLOPs are counted via `pointwise_flops`
+([ADR 0004](/concepts/loss-per-flop-and-scaling-laws)), so the $2.66\times10^{5}$ total is honest.
+</Callout>
+
+## See also
+
+- [In-context control & chemotaxis](/concepts/in-context-control) — the rung family, the regret metric, the transformer bar, and Algorithm Distillation.
+- [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control) — the same local-learner-beats-the-bar result on the *stationary* chemotaxis rung (a FLOP-floor win).
+- [C.A.1 — reservoir control candidates](/experiments/C.A.1-reservoir-control) — the echo-state family `forage_reservoir` is built on; clears the floor but loses on regret.
+- [Loss-per-FLOP & scaling laws](/concepts/loss-per-flop-and-scaling-laws) — why "lower regret at fewer FLOPs" is the win that matters, and the shared x-axis.
+- [Source-(iv) advantage](/concepts/source-iv-advantage) — comparing against the cheap baseline before claiming a win; here the cheapest point *is* the candidate.
+- [First finding — plot the floor first](/experiments/first-finding-pareto) — the Pareto-hollow lesson, here carried onto control.
+
+</Layout>

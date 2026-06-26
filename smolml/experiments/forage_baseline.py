@@ -24,17 +24,17 @@ from smolml.leaderboard import regenerate_control
 from smolml.models import build_model
 
 RUNS_DIR = "runs/forage"
-HORIZON = 32
+HORIZON = 64  # production horizon (matches the C.A.4 candidates + the test-pin metric bounds)
 MODEL = {"d_model": 64, "n_layers": 3, "n_heads": 4}  # fixed P (not swept)
 LR_GRID = (1e-3, 3e-3, 1e-2)
 WD_GRID = (0.0, 0.1)
 BS_GRID = (16, 32)
 EPS_GRID = (0.05, 0.1, 0.2)
 FAST_STEPS = 150  # reference-step budget for the broad sweep
-RERANK_STEPS = 500  # leaderboard budget for re-ranking the top configs
+RERANK_STEPS = 400  # leaderboard budget for re-ranking the top configs
 RERANK_K = 3
-CURVE_STEPS = (150, 350, 700, 1200)  # FLOP-budget curve points (winner)
-EVAL_EPISODES = 64
+CURVE_STEPS = (150, 400, 900)  # FLOP-budget curve points (winner)
+EVAL_EPISODES = 32  # held-out regret; SE ~0.01 << candidate gap (H=64 ~2x the H=32 cost)
 
 
 def ref_step_flops(fcfg: ForageConfig, batch_size: int) -> int:

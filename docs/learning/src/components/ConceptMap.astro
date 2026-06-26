@@ -2,7 +2,7 @@
 // The index concept map: a hand-laid top-down DAG of the compendium, with
 // clickable nodes. Replaces the source mermaid graph with a styled, on-brand
 // SVG so the landing page is the navigational spine (no orphan pages).
-type Role = "accent" | "reference" | "fast_weight" | "transformer" | "pc" | "warm" | "reservoir" | "chemotaxis";
+type Role = "accent" | "reference" | "fast_weight" | "transformer" | "pc" | "warm" | "reservoir" | "chemotaxis" | "forage";
 interface Node {
   id: string;
   x: number;
@@ -72,7 +72,8 @@ const expLeaves: Node[] = [
   { id: "eb4", x: 634, y: LEAF_Y, w: LEAF_W, label: "B.4 delta", role: "fast_weight", href: "/experiments/B.4-delta-mix" },
   { id: "ec1", x: 716, y: LEAF_Y, w: LEAF_W, label: "C.A.1 resv", role: "reservoir", href: "/experiments/C.A.1-reservoir-control" },
   { id: "ec2", x: 798, y: LEAF_Y, w: LEAF_W, label: "C.A.2 chemo", role: "chemotaxis", href: "/experiments/C.A.2-chemotaxis-min-control" },
-  { id: "eff", x: 880, y: LEAF_Y, w: LEAF_W, label: "first find", role: "accent", href: "/experiments/first-finding-pareto" },
+  { id: "ec4", x: 880, y: LEAF_Y, w: LEAF_W, label: "C.A.4 forage", role: "forage", href: "/experiments/C.A.4-forage-local-learners" },
+  { id: "eff", x: 962, y: LEAF_Y, w: LEAF_W, label: "first find", role: "accent", href: "/experiments/first-finding-pareto" },
 ];
 
 function endpoints(a: Node, b: Node) {
@@ -103,7 +104,7 @@ function edgePath(a: Node, b: Node) {
 ---
 
 <figure class="cmap figure">
-  <svg viewBox="0 0 940 652" role="img" aria-label="Concept map of the smolml compendium" class="cmap-svg">
+  <svg viewBox="0 0 1024 652" role="img" aria-label="Concept map of the smolml compendium" class="cmap-svg">
     <defs>
       <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0,0 L10,5 L0,10 z" fill="#6f6650"></path>
@@ -213,6 +214,9 @@ function edgePath(a: Node, b: Node) {
   }
   .role-chemotaxis rect {
     stroke: var(--c-chemo);
+  }
+  .role-forage rect {
+    stroke: var(--c-forage);
   }
   .role-accent rect {
     stroke: var(--accent);

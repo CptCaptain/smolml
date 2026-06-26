@@ -9,6 +9,7 @@ from smolml.models.column_mix import ColumnMix, ColumnMixConfig
 from smolml.models.context_mixing import ContextMixing, ContextMixingConfig
 from smolml.models.delta_mix import DeltaMix, DeltaMixConfig
 from smolml.models.fast_weight import FastWeightConfig, FastWeightMemory
+from smolml.models.forage_min import ForageMin, ForageMinConfig
 from smolml.models.gated_mix import GatedMix, GatedMixConfig
 from smolml.models.hashed_mix import HashedMix, HashedMixConfig
 from smolml.models.pc_refine import PCRefine, PCRefineConfig
@@ -20,6 +21,8 @@ from smolml.models.registry import (
     register_model,
 )
 from smolml.models.reservoir import (
+    ForageReservoir,
+    ForageReservoirConfig,
     Reservoir,
     ReservoirConfig,
     ReservoirPlastic,
@@ -44,6 +47,10 @@ __all__ = [
     "ColumnMixConfig",
     "DeltaMix",
     "DeltaMixConfig",
+    "ForageMin",
+    "ForageMinConfig",
+    "ForageReservoir",
+    "ForageReservoirConfig",
     "PCRefine",
     "Reservoir",
     "ReservoirConfig",

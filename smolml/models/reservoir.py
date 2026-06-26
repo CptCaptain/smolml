@@ -41,6 +41,7 @@ from torch import nn
 
 from smolml.data.corpus import VOCAB_SIZE
 from smolml.envs.chemotaxis import N_ACTIONS
+from smolml.envs.forage import REWARD_LEVELS
 from smolml.flops import FlopBreakdown, gather_flops, matmul_flops, pointwise_flops
 from smolml.models.registry import DecodeState, LanguageModel, register_model
 
@@ -300,6 +301,13 @@ class ReservoirPlastic(LanguageModel):
     distillation harness — but the headline run trains 0 steps.
     """
 
+    _REWARD_DECODE_OPS: int = 1  # reward decode in _decode_reward: one divide
+
+    def _decode_reward(self, revealed_byte: int, lv: int) -> float:
+        """Reward proxy for the policy Hebbian rule. Base (chemotaxis): the obs token IS a
+        monotone concentration level, normalized to [0, 1]. Subclasses override for other envs."""
+        return revealed_byte / (lv - 1)
+
     def __init__(self, config: ReservoirPlasticConfig):
         super().__init__()
         self.config = config
@@ -368,7 +376,7 @@ class ReservoirPlastic(LanguageModel):
         """Reward-modulated Hebbian cost on the ``action_slice`` columns (N_ACTIONS × d_res)."""
         d, na = self.config.d_res, N_ACTIONS
         return (
-            pointwise_flops(5)  # r (1), adv = r-baseline (1), leaky baseline b+decay·(r-b) (3)
+            pointwise_flops(4 + self._REWARD_DECODE_OPS)  # decode r; adv (1); leaky baseline (3)
             + pointwise_flops(na)  # onehot(a_taken)
             + matmul_flops(d, na, 1)  # outer(onehot_a, h_conc) : the Hebbian ΔW
             + pointwise_flops(d * na, per_elem=2)  # W[action] += lr_pol·adv·ΔW : scale + add
@@ -433,7 +441,7 @@ class ReservoirPlastic(LanguageModel):
                 b[self._conc] += cfg.lr_wm * err
                 # Reward-modulated Hebbian policy update on the action columns, with a leaky
                 # baseline; reward proxy = the observed concentration level.
-                r = revealed_byte / (lv - 1)
+                r = self._decode_reward(revealed_byte, lv)
                 adv = r - baseline
                 baseline = baseline + cfg.reward_decay * (r - baseline)
                 oh_a = torch.zeros(N_ACTIONS, device=W.device, dtype=W.dtype)
@@ -479,3 +487,36 @@ class ReservoirPlastic(LanguageModel):
     @classmethod
     def from_config(cls, config: dict[str, object]) -> "ReservoirPlastic":
         return cls(ReservoirPlasticConfig(**config))
+
+
+@dataclass
+class ForageReservoirConfig(ReservoirPlasticConfig):
+    """Same frozen core + plastic readout as ``reservoir_plastic``, but ``d_res=373`` lands
+    ``num_params`` at 148,093 for the forage vocab of 12 (9 combined-obs symbols + 3 actions),
+    just under the transformer bar's 148,608 — so the regret-per-FLOP comparison is fair on the
+    param axis (374 would overshoot the bar at this vocab)."""
+
+    d_res: int = 373
+
+
+@register_model("forage_reservoir")
+class ForageReservoir(ReservoirPlastic):
+    """C.A.4 control: the :class:`ReservoirPlastic` mechanism on the forage rung.
+
+    The frozen echo-state core and the online plastic readout are reused **unchanged**; only the
+    reward proxy differs. The forage obs is a combined ``(type, reward)`` symbol, so the eat-reward
+    is ``obs % REWARD_LEVELS - 1`` (in ``{-1, 0, +1}``), NOT the monotone token value the
+    chemotaxis proxy assumes. Running this generic-capacity learner beside ``forage_min`` isolates
+    that per-type credit-assignment STRUCTURE, not raw capacity, is the lever — the reservoir state
+    conflates cue types across the trajectory, so per-type credit through one plastic readout is
+    muddy (this exact shape already lost on chemotaxis).
+    """
+
+    _REWARD_DECODE_OPS: int = 2  # r = revealed_byte % REWARD_LEVELS - 1: a mod + a sub
+
+    def _decode_reward(self, revealed_byte: int, lv: int) -> float:
+        return float(revealed_byte % REWARD_LEVELS - 1)
+
+    @classmethod
+    def from_config(cls, config: dict[str, object]) -> "ForageReservoir":
+        return cls(ForageReservoirConfig(**config))

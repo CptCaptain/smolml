@@ -39,7 +39,7 @@
   function showCh(c) { return c === " " ? "\u2423" : c; }
 
   // ══ BpbFlopChart ═════════════════════════════════════════════════════════
-  var ROLE_COLOR = { reference: "#5ea8e6", fast_weight: "#f0913e", transformer: "#5cc46a", free: "#cf8be0", pc_refine: "#e0738a", warm: "#e0654d", reservoir: "#8f86d6", reservoir_plastic: "#b3a4e8", chemotaxis: "#3aa890", neutral: "#9a8e76" };
+  var ROLE_COLOR = { reference: "#5ea8e6", fast_weight: "#f0913e", transformer: "#5cc46a", free: "#cf8be0", pc_refine: "#e0738a", warm: "#e0654d", reservoir: "#8f86d6", reservoir_plastic: "#b3a4e8", chemotaxis: "#3aa890", forage_min: "#cf72b3", neutral: "#9a8e76" };
   var VB_W = 780, VB_H = 480, M = { top: 30, right: 26, bottom: 58, left: 66 };
   var PX0 = M.left, PX1 = VB_W - M.right, PY0 = M.top, PY1 = VB_H - M.bottom;
 
