@@ -57,7 +57,7 @@ Only the chart takes data; the rest are self-contained.
 | `cursorchase` (`CursorChase.astro`) | **Interactive chemotaxis cursor-follow — consumes the model layer.** A `<canvas>` concentration field whose peak **drifts toward your cursor at ≤1 cell/tick** (ChemoEnv's drift); three controllers (`chemotaxis_min` green, `reservoir` orange, `reservoir_plastic` rose) sense only their own cell and chemotax to chase it (parity tape: even = sense, odd = action). HUD: params + FLOPs/step (66 vs ~10k) + live mean/cumulative reward (leader-highlighted); checkboxes toggle each marker. Step/Play/Reset; canvas redraws per tick. | inline JSON: `env` + each controller's `config`/`weights` (chemotaxis fixture + reservoir `*.weights.json`) merged with HUD facts from `curves.ts` |
 
 The shared **stream scaffold** and **chart** logic live as functions in `compendium.js` (rule of
-two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 3 regret (`RegretFlopChart`); one stream scaffold for both stream demos; one `wireTransport` helper — Step/Play/Reset on a timer, + a shared `.demo-transport` button style — for the two live model demos).
+two: one chart routine for **17** chart instances — 13 bpb (`BpbFlopChart`) + 4 regret (`RegretFlopChart`); one stream scaffold for both stream demos; one `wireTransport` helper — Step/Play/Reset on a timer, + a shared `.demo-transport` button style — for the two live model demos).
 
 ### Presentational (`.astro`)
 
@@ -73,11 +73,11 @@ two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 
 ### Data modules
 
 - `src/data/curves.ts` — `Series` type (roles incl. `pc_refine`, `warm`, and the control roles
-  `reservoir` / `reservoir_plastic` / `chemotaxis`; `CurvePoint` carries optional `bpb?` **or**
+  `reservoir` / `reservoir_plastic` / `chemotaxis` / `forage_min`; `CurvePoint` carries optional `bpb?` **or**
   `regret?`) + datasets `firstFinding`, `contextMixingReference`, `prequentialBaseline`,
   `amortizedBaseline`, `freeUnigram`, `surpriseGatedPc` (B.1), `warmedMixing` + `gatedMix` (B.2),
   `hashedMixFull` (B.3), `deltaMix` + `deltaFull` (B.4), `controlCandidates` / `reservoirControl`
-  / `chemotaxisControl` (C.A, regret-vs-FLOP), and `demoByteModels` + `demoControlModels` (the two
+  / `chemotaxisControl` (C.A chemotaxis) / `forageControl` (C.A.4 forage) — all regret-vs-FLOP — and `demoByteModels` + `demoControlModels` (the two
   live-demo HUD fact tables — params / FLOPs-per-step / role / refBpb, from the model-layer README),
   constants. Provenance-commented.
 - `src/data/nav.ts` — `NavItem`, `concepts`, `experiments`, `order`, `neighbors()`.
@@ -103,11 +103,15 @@ two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 
   This keeps the interactive re-renders visually honest against the embedded PNGs.
   Control-rung candidates (C.A) extend the same precedent: reservoir family = **indigo**
   (`--c-reservoir` #8f86d6, frozen C.A.1) with a lighter **lavender** sibling (`--c-plastic` #b3a4e8,
-  online-plastic C.A.1b — same hue = same family), and chemotaxis_min = **teal** (`--c-chemo` #3aa890).
-  All three are otherwise-unused hues (no collision with blue/orange/green/violet/rose/vermilion/amber),
-  flat semantic mark colors (no gradient/glow — not the cyan-on-dark slop pattern), and light enough to
-  host dark bar-fill text. They appear on the **regret** charts only (no bpb-axis collision) and as
-  `ConceptMap` leaf borders + `.swatch`es.
+  online-plastic C.A.1b — same hue = same family), chemotaxis_min = **teal** (`--c-chemo` #3aa890),
+  and forage_min = **magenta** (`--c-forage` #cf72b3, C.A.4 — the per-type contingency tracker; magenta
+  sits in the otherwise-unused ~300–340° gap between rose and violet, and never co-occurs with either on a
+  chart or adjacent on the map). All four are otherwise-unused hues (no collision with
+  blue/orange/green/violet/rose/vermilion/amber), flat semantic mark colors (no gradient/glow — not the
+  cyan-on-dark slop pattern), and light enough to host dark bar-fill text. They appear on the **regret**
+  charts only (no bpb-axis collision) and as `ConceptMap` leaf borders + `.swatch`es. C.A.4's memory-parity
+  control `forage_reservoir` **reuses** the C.A.1b reservoir-family lavender (`--c-plastic`) — it IS that
+  `reservoir_plastic` mechanism ported to forage, so no new token (KISS).
 - **Interactive model demos (C.A) reuse existing role tokens — no new color.** The byte race keeps
   `context_mixing` = reference blue, `delta_mix` = fast_weight orange (it IS a delta-rule fast weight, the
   B.4 lineage), `transformer` = transformer green. The cursor chase keeps the in-context-control page's
@@ -124,11 +128,11 @@ two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 
 - **Quality bar per concept page:** intuition → math → worked example (plain language first); ≥1
   interactive viz; cross-links + a "See also"; appears in the concept map + sidebar (no orphans);
   KaTeX math.
-- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses) + `RegretFlopChart` (3 uses) are two
+- **Rule of two (factored shared viz):** `BpbFlopChart` (13 uses) + `RegretFlopChart` (4 uses) are two
   thin markers over **one** `mountChart` routine (parametrized by an optional `metric` config; absent ⇒
-  the bpb defaults, so all 13 bpb charts are byte-unchanged). `HBars` (2 uses — factored from B.4's inline
-  `.genbars` two-bar, first use refactored, + the C.A reward bars), `Pipeline` (8), `CardGrid` (2),
-  `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 16 chart instances, one
+  the bpb defaults, so all 13 bpb charts are byte-unchanged). `HBars` (4 uses — factored from B.4's inline
+  `.genbars` two-bar, first use refactored, + the three C.A reward ladders C.A.1 / C.A.2 / C.A.4),
+  `Pipeline` (8), `CardGrid` (2), `Callout` (everywhere); inside `compendium.js`, one chart routine serves all 17 chart instances, one
   stream scaffold serves both stream demos, and one `wireTransport` helper (+ shared `.demo-transport`
   button style) serves the two live model demos. The older bespoke transports in
   `mountStream`/`mountControlRollout` were left as-is (their scrub/loop semantics differ; not
@@ -162,11 +166,11 @@ two: one chart routine for **16** chart instances — 13 bpb (`BpbFlopChart`) + 
 - **Concepts (9):** loss-per-flop-and-scaling-laws, compression-equals-prediction,
   prequential-evaluation, source-iv-advantage, fast-weight-memory, context-mixing,
   predictive-coding, online-warmup, in-context-control.
-- **Experiments (11 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
+- **Experiments (12 + log index):** 0.1-baseline-harness-smoke, 0.2-prequential-baseline,
   context-mixing-reference, A.1-fast-weight-memory, B.1-surprise-gated-pc-refinement,
   B.2-warmed-mixing, B.3-hashed-mix-full-corpus, B.4-delta-mix, C.A.1-reservoir-control,
-  C.A.2-chemotaxis-min-control, first-finding-pareto. The bpb pages render the shared interactive
-  `BpbFlopChart`; the two C.A control pages render `RegretFlopChart` (same routine, regret on y).
+  C.A.2-chemotaxis-min-control, C.A.4-forage-local-learners, first-finding-pareto. The bpb pages render the
+  shared interactive `BpbFlopChart`; the three C.A control pages render `RegretFlopChart` (same routine, regret on y).
   (One plot per page; B.2 is the lone two-plot page — Phase 1 + Phase 2 are distinct experiments;
   harness PNGs stay as artifacts under `experiments/`, not embedded — session 6.)
 - **Landing:** `index.mdx` with the `ConceptMap` and card grids.
@@ -507,3 +511,58 @@ Main rather than reproduced. No other numbers touched.
     validate if the contract is reused. (b) Pre-existing across **all** charts: marks are `role="button"` +
     `tabindex` but have no Enter/Space activation handler (toggle is click / legend only) — an a11y gap not
     introduced here.
+- **2026-06-26 (session 14 — C.A.4 forage local-learners page):** authored the experiment page
+  `C.A.4-forage-local-learners` from the researcher note, mirroring C.A.2's layout/frontmatter/imports
+  (`Layout` + `Callout` + `RegretFlopChart` + `HBars`): intuition (the forage rung as a contextual bandit
+  over K=3 cue types — find which type pays from your eat-outcomes, then camp it) → math (a per-type value
+  vector reset each episode + a local delta rule `v[t] += lr·(r − v[t])`, optimistic-init exploration, a
+  distilled-scalar softmax policy `logit(EAT) = g·v[t] + b_eat`) → worked example (one episode, K=3,
+  optimistic v=[+0.3,…], lr=0.8, g=8 — poison flips a type negative, g climbs, it camps) → result.
+  - **Lead Callouts:** an `insight` (`forage_min` 0.047 regret @ $2.66\times10^{5}$ FLOPs / 8 params beats
+    the swept transformer bar's cheapest 0.113 @ $6.39\times10^{11}$ / 148,672 params — ~6 OOM fewer FLOPs,
+    and beats `win_stay_lose_shift` too) and a `caveat` (reflex-proof rung + a genuine within-episode
+    learner ⇒ the (iv) thesis, not a strawman; but the rung's optimum is cheaply learnable by a local rule;
+    **structure** — exact per-cue-type credit assignment — **not capacity** is the per-FLOP lever).
+  - **Viz:** the regret-vs-FLOP `RegretFlopChart` (`forageControl`: `forage_min` lower-left, transformer
+    bar upper-right, `forage_reservoir` far up-right; every candidate curve *rises* with distillation — more
+    FLOPs do not buy lower regret here), the distillation mini-table (0.047/0.056/0.161), a structure-not-
+    capacity `forage_reservoir` section, a robustness `note` (seeds 1–7: 0.0435 ± 0.009, max 0.058), verdict
+    + learnings + a `reproduce` note. **HBars = the reference-policy reward ladder** (oracle +0.96,
+    `win_stay_lose_shift` +0.85, `random` −0.11, `always_eat` −0.33 in `neutral` gray + `forage_min` +0.91
+    in magenta; scaled on the eat reward range [−1,+1]) — shows reflex-proof (both fixed reflexes below
+    zero) and `forage_min` edging `wsls` toward the oracle. `forage_min`'s reward is **derived** (oracle
+    0.96 − regret 0.047 ≈ +0.91), flagged transparently in the caption (the note states regret, not the
+    absolute reward).
+  - **Data:** added `forageControl` to `curves.ts` (`forageBar` transformer + `forageMinCurve` +
+    `forageReservoirCurve`, all *reported-FLOP* 3-point curves — unlike C.A.2's chemo point, every forage
+    point has a FLOP coordinate, so each is a curve; provenance-commented). `forage_reservoir` **reuses**
+    the `reservoir_plastic` role (lavender) — it IS that C.A.1b mechanism ported to forage, so no new token.
+  - **One new role + token (4th control hue):** `forage_min` = **magenta** `--c-forage` #cf72b3, in the
+    otherwise-unused ~300–340° gap (rose↔violet), added across `curves.ts` `SeriesRole`, `compendium.js`
+    `ROLE_COLOR`, `global.css` (`--c-forage` + `.swatch.forage_min` + `.genbar-fill.forage_min`), and
+    `ConceptMap` (`Role` + `.role-forage`). Same per-candidate-hue precedent as reservoir/plastic/chemo;
+    chosen over reusing chemo teal so the map's two control-winner leaves don't read as the same model.
+  - **Wiring (no orphans):** `nav.ts` (EXP C.A.4 between C.A.2 and first-finding → auto experiments-index
+    card + prev/next), `ConceptMap` (12th bus leaf `C.A.4 forage` inserted between `ec2` and `eff`; `eff`
+    moved 880→962 and the viewBox widened 940→1024 so the existing 11 leaves + labels stay byte-unchanged;
+    magenta `role-forage` border; linked to `in-context-control` via the existing `ctrl → exp` bus, sibling
+    of C.A.2 — same structure as C.A.1/C.A.2, no direct leaf→concept edge), and reciprocal cross-links on
+    `in-context-control` (related rail + a bridging "sibling rung" paragraph in the honest-framing section +
+    See-also). No new component factored — reused `RegretFlopChart` (now 4 uses), `HBars` (now 4 uses),
+    `Callout`, `ConceptMap`; `mountChart` now serves **17** chart instances.
+  - Build green (**23 pages**); verified from `file://` (zero console errors): the C.A.4 chart mounts (9
+    marks across 3 series — green/magenta/lavender confirmed; legend toggle 9→6→9 survives re-render), the
+    reward ladder renders (5 rows, `forage_min` +0.91 magenta @ 95.7%), 32 KaTeX spans, no `\u` leaks, the
+    concept-map leaf sits at clean 4px gaps with a magenta border (no overlap/clipping; viewBox 1024), and
+    every cross-link (siblings, concepts, first-finding, in-context-control) + the experiments-index card
+    resolve. `git diff` confined to `docs/learning/`; did NOT commit/PR, did NOT run repo gates.
+  - **Flagged for researcher confirmation (not "fixed"):** (1) `forage_min`'s absolute mean reward isn't in
+    the note — I **derived** it (oracle 0.96 − regret 0.047 ≈ +0.91) for the reward ladder, transparently
+    captioned; confirm the oracle baseline + forage_min's reward. (2) The note reports only within-episode
+    *deltas* (2nd−1st: +0.16 forage_min, +0.31/+0.18 reservoir), not absolute 1st/2nd-half rewards, so —
+    unlike C.A.1/C.A.2 — there is no within-episode absolute-reward HBars; I used the reference-policy
+    reward ladder instead and put the +0.16 within-episode signal in prose. (3) The shared-context
+    `forage_reservoir` curve has 3 points including (6.23e10, 0.514 @50 steps) that the note's *table* omits
+    (the table lists only @0 and @200); I used the shared-context 3-point set per instruction. (4) No model
+    file paths / driver command in the note (only `runs/forage/leaderboard.png` + `render_rollout`), so the
+    `reproduce` note cites the run dir + model names, not invented `.py` paths. No science relitigated.

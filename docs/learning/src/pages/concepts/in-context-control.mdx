@@ -26,6 +26,7 @@ import { controlCandidates } from "../../data/curves";
     { href: "/concepts/source-iv-advantage", title: "Source-(iv) advantage" },
     { href: "/concepts/fast-weight-memory", title: "Fast-weight associative memory" },
     { href: "/experiments/C.A.2-chemotaxis-min-control", title: "C.A.2 — chemotaxis_min (the FLOP-floor win)" },
+    { href: "/experiments/C.A.4-forage-local-learners", title: "C.A.4 — forage local learners" },
     { href: "/experiments/C.A.1-reservoir-control", title: "C.A.1 — reservoir candidates" },
   ]}
 >
@@ -232,6 +233,13 @@ hand-coded reactor already takes the rung's per-FLOP optimum, so a harder "C.A.0
 distillation source *learns within the episode* — is what would force genuine drift-rate inference.
 </Callout>
 
+A **sibling rung** takes a step in exactly that direction: the [forage contextual bandit
+(C.A.4)](/experiments/C.A.4-forage-local-learners) is **reflex-proof** — no fixed policy is
+near-optimal — and there an 8-parameter local learner that *genuinely adapts within the episode*
+still beats the swept distilled transformer on regret at ~6 orders of magnitude fewer FLOPs. On that
+rung the win is genuine within-episode learning rather than a fixed-reaction floor, and the per-FLOP
+lever is **structure** (exact per-cue-type credit assignment), not capacity.
+
 ## See also
 
 - [Prequential evaluation](/concepts/prequential-evaluation) — predict-before-reveal and total-FLOP accounting, here stretched over a predict-and-act tape.
@@ -241,5 +249,6 @@ distillation source *learns within the episode* — is what would force genuine 
 - [Online context mixing](/concepts/context-mixing) — the live byte race: the same predict-then-learn loop, measuring bpb per FLOP instead of reward.
 - [C.A.2 — chemotaxis_min](/experiments/C.A.2-chemotaxis-min-control) — the five-scalar organism that beats the bar on the FLOP axis, and why it is a floor result.
 - [C.A.1 — reservoir control candidates](/experiments/C.A.1-reservoir-control) — the echo-state family that clears the random floor but loses on regret.
+- [C.A.4 — forage local learners](/experiments/C.A.4-forage-local-learners) — the same local-learner-beats-the-bar lesson on a reflex-proof sibling rung, where the tiny winner is a genuine within-episode learner.
 
 </Layout>

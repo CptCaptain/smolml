@@ -41,10 +41,11 @@
   --c-free: #cf8be0;
   --c-pc: #e0738a;
   --c-warm: #e0654d;
-  /* control-rung candidates (C.A): reservoir family = indigo (two shades), chemotaxis = teal */
+  /* control-rung candidates (C.A): reservoir family = indigo (two shades), chemotaxis = teal, forage_min = magenta */
   --c-reservoir: #8f86d6;
   --c-plastic: #b3a4e8;
   --c-chemo: #3aa890;
+  --c-forage: #cf72b3;
   --c-neutral: #9a8e76;
 
   /* type */
@@ -342,6 +343,9 @@ blockquote {
 }
 .swatch.chemotaxis {
   background: var(--c-chemo);
+}
+.swatch.forage_min {
+  background: var(--c-forage);
 }
 
 /* responsive */
@@ -646,6 +650,7 @@ blockquote {
 .genbar-fill.neutral { background: var(--c-neutral); }
 .genbar-fill.reservoir_plastic { background: var(--c-plastic); }
 .genbar-fill.chemotaxis { background: var(--c-chemo); }
+.genbar-fill.forage_min { background: var(--c-forage); }
 @media (max-width: 640px) { .genbar-row { grid-template-columns: 8.5rem 1fr; } }
 
 /* ── interactive-demo widgets (run the live model layer) ─────────────────── */

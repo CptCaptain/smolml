@@ -156,6 +156,13 @@ export const experiments: NavItem[] = [
     kicker: "EXP C.A.2",
   },
   {
+    slug: "C.A.4-forage-local-learners",
+    href: "/experiments/C.A.4-forage-local-learners",
+    title: "C.A.4 — forage local learners",
+    blurb: "An 8-param per-type tracker beats the swept transformer on regret AND by ~6 OOM on FLOPs; structure, not capacity, is the per-FLOP lever.",
+    kicker: "EXP C.A.4",
+  },
+  {
     slug: "first-finding-pareto",
     href: "/experiments/first-finding-pareto",
     title: "First finding — the win is Pareto-hollow",
