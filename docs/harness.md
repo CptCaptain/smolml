@@ -584,6 +584,36 @@ not compute, is the lever); chosen `lr=3e-3, wd=0, bs=32, ε=0.05` → **transfo
 `runs/forage/leaderboard.{md,png}` + a sample raster. A local-learning candidate that infers `g`
 cheaper per-FLOP is this rung's prize (a follow-on PR).
 
+### Local-learning candidates (Task C.A.4) — `forage_min` + `forage_reservoir`
+
+The first candidates on the forage rung (mirroring C.A.0 → C.A.1/C.A.2). Bar **re-swept at H=64**
+(`EVAL_EPISODES=32`): swept winner `lr=3e-3, wd=0.1, bs=32, ε=0.05` → **transformer bar ≈ 0.113 regret /
++0.85 reward @ 6.4e11 FLOPs**, regret flat 0.113→0.135 across the FLOP curve (tuning, not compute, is the
+lever — honest bar).
+
+- **`forage_min`** (`smolml/models/forage_min.py`) — the FLOP-floor reference, bandit analogue of
+  `chemotaxis_min`. In-context **per-type value vector** `v[K]` (reset per episode, not a weight) updated
+  by a local delta rule `v[t] += lr·(r − v[t])` on post-EAT obs folds (exact O(1) credit assignment, EAT
+  does not move); a distilled-scalar softmax policy (8 scalar params) eats high-value types, searches past
+  poison, camps `g`. All pointwise, `step.backward = 0` (the value update is forward compute). **~0
+  distillation: regret 0.047 @ 2.66e5 total FLOPs** — ~6 OOM below the bar and **below** the bar's 0.113
+  regret. Robust across held-out seeds 1–7 (regret 0.0435 ± 0.009). Distillation *degrades* it (0.16 by
+  400 steps): the principled inits are already near-optimal. Run: `uv run python -m
+  smolml.experiments.forage_min_control`.
+- **`forage_reservoir`** (`smolml/models/reservoir.py`, subclasses `ReservoirPlastic`) — the
+  generic-capacity control: the `reservoir_plastic` frozen core + plastic readout (148k params,
+  memory-parity) with the forage reward decode (`obs % 3 − 1`). No per-type structure → muddy credit
+  assignment → **regret 0.40–0.46 @ 1e9–2.5e11 FLOPs** (loses on both axes). Isolates that
+  *structure*, not capacity, is the per-FLOP lever. Run: `uv run python -m
+  smolml.experiments.forage_reservoir_control`.
+
+**Headline (the (iv) thesis, confirmed):** a tiny local rule with exact per-cue-type credit assignment
+beats the distilled transformer on regret AND by ~6 OOM on FLOPs in the scalar-reward / no-derivative
+setting — where the byte-prediction routing candidate `column_mix` (B.5) could not win. Honest caveat:
+like `chemotaxis_min` on chemotaxis, a tracker this well-matched to the bandit winning also re-shows that
+this rung's optimum is cheaply learnable by a local rule; forage remains reflex-proof (no *fixed* policy
+wins — `forage_min` genuinely adapts within-episode, 2nd-half > 1st-half).
+
 ## Caveats (known gaps; do not over-read small deltas)
 
 - **Single-seed.** Runs here are single-seed point estimates. On a tiny corpus a

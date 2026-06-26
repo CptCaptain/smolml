@@ -24,7 +24,7 @@ from smolml.models import build_model
 
 RUNS_DIR = "runs/forage"
 HORIZON = 64
-EPISODES = 64
+EPISODES = 32  # held-out eval; matches forage_baseline EVAL_EPISODES for an apples-to-apples curve
 SEED = 0
 MODEL: dict[str, object] = {"d_res": 373, "leak": 0.6, "spectral_radius": 0.9, "seed": 0}
 # Distillation curve points, in reference training steps (0 => the ~0-distillation headline).
